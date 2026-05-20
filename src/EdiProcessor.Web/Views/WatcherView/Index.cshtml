@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>EDI Folder Watcher</title>
+<style>
+  :root {
+    --bg:#080b10;--surf:#0d1117;--surf2:#131820;--border:#1e2b3a;
+    --accent:#00ffa3;--accent2:#0af;--warn:#ff9d00;--danger:#ff4466;
+    --text:#dde8f5;--muted:#4d6280;--muted2:#7a94b4;
+    --mono:'Courier New',monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:28px;min-height:100vh}
+  h1{font-size:22px;font-weight:800;margin-bottom:4px}
+  .sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:24px}
+
+  .grid{display:grid;gap:16px}
+  .grid-4{grid-template-columns:repeat(4,1fr)}
+  .grid-2{grid-template-columns:1fr 1fr}
+  .grid-3{grid-template-columns:2fr 1fr}
+
+  .card{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:18px;position:relative;overflow:hidden}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--c,var(--accent))}
+  .card-lbl{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+  .card-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--c,var(--text));line-height:1}
+  .card-sub{font-size:11px;color:var(--muted2);margin-top:4px}
+
+  .panel{background:var(--surf);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+  .panel-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border)}
+  .panel-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted2)}
+  .panel-body{padding:16px}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{font-family:var(--mono);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:9px 12px;text-align:left;border-bottom:1px solid var(--border)}
+  tbody tr{border-bottom:1px solid rgba(255,255,255,0.03);transition:background 0.1s}
+  tbody tr:hover{background:rgba(255,255,255,0.02)}
+  tbody td{padding:10px 12px;vertical-align:middle}
+
+  .badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;font-family:var(--mono);font-size:9px;font-weight:700;text-transform:uppercase;white-space:nowrap}
+  .b-ok{background:rgba(0,255,163,0.1);color:var(--accent);border:1px solid rgba(0,255,163,0.2)}
+  .b-fail{background:rgba(255,68,102,0.1);color:var(--danger);border:1px solid rgba(255,68,102,0.2)}
+  .b-skip{background:rgba(0,170,255,0.1);color:var(--accent2);border:1px solid rgba(0,170,255,0.2)}
+  .b-pend{background:rgba(255,157,0,0.1);color:var(--warn);border:1px solid rgba(255,157,0,0.2)}
+  .b-fsw{background:rgba(0,255,163,0.08);color:var(--accent);border:1px solid rgba(0,255,163,0.15);font-size:8px}
+
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid transparent;transition:all 0.15s;font-family:inherit}
+  .btn-primary{background:var(--accent);color:#000;border-color:var(--accent)}
+  .btn-primary:hover{background:#00d988;box-shadow:0 0 16px rgba(0,255,163,0.3)}
+  .btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
+  .btn-ghost:hover{background:var(--surf2)}
+
+  .path-box{background:var(--surf2);border:1px solid var(--border);border-radius:5px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--accent);word-break:break-all;margin-top:4px}
+
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+  .dot-green{background:var(--accent);box-shadow:0 0 6px rgba(0,255,163,0.6);animation:pulse 2s infinite}
+  .dot-red{background:var(--danger)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+  .spinner{width:14px;height:14px;border:2px solid rgba(0,255,163,0.2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;display:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px}
+  .toast{background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;display:flex;align-items:center;gap:8px;min-width:240px;animation:toastIn 0.2s ease;box-shadow:0 8px 24px rgba(0,0,0,0.5)}
+  @keyframes toastIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+  .toast.ok{border-left:3px solid var(--accent)}
+  .toast.err{border-left:3px solid var(--danger)}
+
+  .folder-tree{font-family:var(--mono);font-size:11px;line-height:2;color:var(--muted2)}
+  .folder-tree .dir{color:var(--accent2)}
+  .folder-tree .partner{color:var(--warn)}
+  .folder-tree .file{color:var(--muted)}
+  .folder-tree .arrow{color:var(--muted)}
+
+  .ext-badge{display:inline-block;background:var(--surf2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-family:var(--mono);font-size:10px;color:var(--muted2);margin:2px}
+
+  .progress-bar{height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:8px}
+  .progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.05s linear;width:0%}
+
+  @media(max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+  <h1>📁 EDI Folder Watcher</h1>
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-ghost" onclick="loadStatus()">↻ Refresh</button>
+    <button class="btn btn-primary" id="scan-btn" onclick="scanNow()">
+      <span id="scan-spinner" class="spinner"></span>
+      ▶ Scan Inbox Now
+    </button>
+  </div>
+</div>
+<div class="sub">Background service · polls inbox every <span id="poll-interval">—</span>s · auto-processes 837P/I/D, TA1, 999</div>
+
+<!-- KPI row -->
+<div class="grid grid-4" style="margin-bottom:16px" id="kpi-row">
+  <div class="card" style="--c:var(--accent)"><div class="card-lbl">Files Picked Up</div><div class="card-val" id="k-total">—</div><div class="card-sub">All time</div></div>
+  <div class="card" style="--c:var(--accent)"><div class="card-lbl">Succeeded</div><div class="card-val" id="k-ok">—</div><div class="card-sub" id="k-ok-rate">—</div></div>
+  <div class="card" style="--c:var(--danger)"><div class="card-lbl">Failed</div><div class="card-val" id="k-fail">—</div><div class="card-sub">Moved to edi-failed/</div></div>
+  <div class="card" style="--c:var(--accent2)"><div class="card-lbl">In Inbox Now</div><div class="card-val" id="k-inbox">—</div><div class="card-sub">Waiting to process</div></div>
+</div>
+
+<div class="grid grid-3" style="margin-bottom:16px">
+
+  <!-- Left: watcher config -->
+  <div>
+    <div class="panel">
+      <div class="panel-hdr">
+        <span class="panel-title">Watcher Status</span>
+        <span id="fsw-badge"></span>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex;align-items:center;margin-bottom:14px">
+          <span class="status-dot dot-green" id="status-dot"></span>
+          <span style="font-weight:700" id="status-txt">Running</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:12px" id="last-scan"></span>
+        </div>
+
+        <div style="margin-bottom:10px">
+          <div class="card-lbl">Inbox (drop files here)</div>
+          <div class="path-box" id="inbox-path">—</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div class="card-lbl">Processed archive</div>
+          <div class="path-box" id="proc-path">—</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div class="card-lbl">Failed files</div>
+          <div class="path-box" id="fail-path">—</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div class="card-lbl">Watched Extensions</div>
+          <div id="ext-list" style="margin-top:4px"></div>
+        </div>
+        <div>
+          <div class="card-lbl">Polling Interval</div>
+          <div style="font-family:var(--mono);font-size:18px;color:var(--accent);margin-top:4px"><span id="poll2">—</span>s</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Folder layout explanation -->
+    <div class="panel">
+      <div class="panel-hdr"><span class="panel-title">Inbox Folder Layout</span></div>
+      <div class="panel-body">
+        <div class="folder-tree" id="folder-tree">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: partner sub-folders -->
+  <div>
+    <div class="panel">
+      <div class="panel-hdr"><span class="panel-title">Partner Sub-folders</span></div>
+      <div class="panel-body" id="partner-folders">Loading…</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hdr"><span class="panel-title">How It Works</span></div>
+      <div class="panel-body" style="font-size:12px;color:var(--muted2);line-height:1.8">
+        <div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">1.</span> Drop any EDI file into the inbox folder (or a partner sub-folder)</div>
+        <div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">2.</span> FileSystemWatcher picks it up within seconds. Polling runs every <span id="poll3">30</span>s as backup</div>
+        <div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">3.</span> Trading partner resolved from sub-folder name (ISA06), then file ISA06, then default</div>
+        <div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">4.</span> File is parsed, claims stored in DB, status set to Received</div>
+        <div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">5.</span> File moved to <span style="font-family:var(--mono);color:var(--accent2)">edi-processed/YYYY/MM/DD/</span> + <span style="font-family:var(--mono);color:var(--accent2)">.result.json</span></div>
+        <div><span style="color:var(--accent);font-weight:700">6.</span> On error: moved to <span style="font-family:var(--mono);color:var(--danger)">edi-failed/</span> + <span style="font-family:var(--mono);color:var(--danger)">.error.txt</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- File processing log -->
+<div class="panel">
+  <div class="panel-hdr">
+    <span class="panel-title">File Processing Log</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="log-status-filter" onchange="filterLogs()" style="background:var(--surf2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:11px">
+        <option value="">All</option>
+        <option value="Success">Success</option>
+        <option value="Failed">Failed</option>
+        <option value="Skipped">Skipped</option>
+        <option value="Pending">Pending</option>
+      </select>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)" id="log-count"></span>
+    </div>
+  </div>
+  <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>Status</th><th>File Name</th><th>Type</th><th>Partner</th>
+        <th>Control #</th><th>Claims</th><th>Duration</th><th>Picked Up</th><th>Final Path</th>
+      </tr></thead>
+      <tbody id="log-tbody"></tbody>
+    </table>
+  </div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+    <button class="btn btn-ghost" id="prev-btn" onclick="changePage(-1)" style="padding:5px 10px;font-size:11px">← Prev</button>
+    <span style="font-family:var(--mono);font-size:11px;color:var(--muted);line-height:28px" id="page-info"></span>
+    <button class="btn btn-ghost" id="next-btn" onclick="changePage(1)" style="padding:5px 10px;font-size:11px">Next →</button>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+let allLogs = [], filteredLogs = [], page = 1, pageSize = 20;
+let partners = [];
+
+async function loadStatus() {
+  try {
+    const [statusRes, logsRes] = await Promise.all([
+      fetch('/api/watcher/status'),
+      fetch('/api/watcher/logs?pageSize=200'),
+    ]);
+    const s = await statusRes.json();
+    const l = await logsRes.json();
+
+    partners = s.partnerFolders || [];
+    allLogs = l.items || [];
+    filterLogs();
+
+    // KPIs
+    document.getElementById('k-total').textContent = fmt(s.filesPickedUpTotal);
+    document.getElementById('k-ok').textContent    = fmt(s.filesSucceededTotal);
+    document.getElementById('k-fail').textContent  = fmt(s.filesFailedTotal);
+    document.getElementById('k-inbox').textContent = fmt(s.filesInInboxNow);
+    const rate = s.filesPickedUpTotal ? Math.round(s.filesSucceededTotal/s.filesPickedUpTotal*100) : 0;
+    document.getElementById('k-ok-rate').textContent = rate + '% success rate';
+
+    // Paths
+    document.getElementById('inbox-path').textContent = s.inboxPath || '—';
+    document.getElementById('proc-path').textContent  = s.processedPath || '—';
+    document.getElementById('fail-path').textContent  = s.failedPath || '—';
+    document.getElementById('poll-interval').textContent = s.pollingIntervalSeconds;
+    document.getElementById('poll2').textContent = s.pollingIntervalSeconds;
+    document.getElementById('poll3').textContent = s.pollingIntervalSeconds;
+
+    // FSW badge
+    document.getElementById('fsw-badge').innerHTML = s.fileSystemWatcherActive
+      ? '<span class="badge b-fsw">⚡ FileSystemWatcher ON</span>'
+      : '<span class="badge b-skip">Polling only</span>';
+
+    // Last scan
+    document.getElementById('last-scan').textContent =
+      s.lastScanAt ? 'Last scan: ' + rel(s.lastScanAt) : 'Not yet scanned';
+
+    // Extensions
+    document.getElementById('ext-list').innerHTML =
+      (s.watchedExtensions||[]).map(e=>`<span class="ext-badge">${e}</span>`).join('');
+
+    // Folder tree
+    renderFolderTree(s);
+    renderPartnerFolders(s.partnerFolders||[]);
+
+  } catch(e) {
+    toast('Failed to load watcher status: ' + e.message, 'err');
+  }
+}
+
+function renderFolderTree(s) {
+  const inbox = s.inboxPath ? s.inboxPath.split(/[\\/]/).pop() : 'edi-inbox';
+  const proc  = s.processedPath ? s.processedPath.split(/[\\/]/).pop() : 'edi-processed';
+  const fail  = s.failedPath ? s.failedPath.split(/[\\/]/).pop() : 'edi-failed';
+  const folders = (s.partnerFolders||[]).map(pf =>
+    `  ├── <span class="partner">${pf.folderName}/</span>` +
+    (pf.mappedPartnerName ? ` <span class="file">← ${pf.mappedPartnerName}</span>` : ' <span class="file">← unmapped</span>') +
+    (pf.filesWaiting > 0 ? ` <span style="color:var(--warn)">[${pf.filesWaiting} waiting]</span>` : '')
+  ).join('\n');
+
+  document.getElementById('folder-tree').innerHTML = `<span class="dir">${inbox}/</span>
+${folders}
+  └── <span class="file">*.edi  ← root files (ISA06 auto-matched)</span>
+
+<span class="dir">${proc}/</span>
+  └── <span class="dir">2024/01/15/</span>
+        ├── <span class="file">claim.edi</span>
+        └── <span class="file">claim.edi.result.json</span>
+
+<span class="dir">${fail}/</span>
+  ├── <span class="file">bad_file.edi</span>
+  └── <span class="file">bad_file.edi.error.txt</span>`;
+}
+
+function renderPartnerFolders(folders) {
+  if (!folders.length) {
+    document.getElementById('partner-folders').innerHTML =
+      '<div style="color:var(--muted);font-size:12px">No sub-folders found in inbox.</div>';
+    return;
+  }
+  document.getElementById('partner-folders').innerHTML = folders.map(f => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--accent2)">${f.folderName}/</div>
+        <div style="font-size:11px;color:var(--muted2)">${f.mappedPartnerName || '<span style="color:var(--danger)">No partner match</span>'}</div>
+      </div>
+      <div style="text-align:right">
+        ${f.filesWaiting > 0
+          ? `<span class="badge b-pend">${f.filesWaiting} waiting</span>`
+          : `<span class="badge b-ok">Empty</span>`}
+      </div>
+    </div>`).join('');
+}
+
+function filterLogs() {
+  const sf = document.getElementById('log-status-filter').value;
+  filteredLogs = sf ? allLogs.filter(l=>l.status===sf) : allLogs;
+  page = 1;
+  renderLogs();
+}
+
+function renderLogs() {
+  const total = filteredLogs.length;
+  const totalPages = Math.max(1, Math.ceil(total/pageSize));
+  page = Math.min(page, totalPages);
+  const slice = filteredLogs.slice((page-1)*pageSize, page*pageSize);
+
+  document.getElementById('log-count').textContent = total + ' records';
+  document.getElementById('page-info').textContent = `Page ${page} / ${totalPages}`;
+  document.getElementById('prev-btn').disabled = page <= 1;
+  document.getElementById('next-btn').disabled = page >= totalPages;
+
+  if (!slice.length) {
+    document.getElementById('log-tbody').innerHTML =
+      '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No files processed yet. Drop EDI files into the inbox folder.</td></tr>';
+    return;
+  }
+
+  document.getElementById('log-tbody').innerHTML = slice.map(l => {
+    const dur = l.processingDuration
+      ? (parseFloat(l.processingDuration.split(':').pop())*1000).toFixed(0) + 'ms'
+      : '—';
+    const finalName = l.finalPath ? l.finalPath.split(/[\\/]/).pop() : '—';
+    return `<tr title="${l.errorMessage||''}">
+      <td>${statusBadge(l.status)}</td>
+      <td style="font-family:var(--mono);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.fileName}">${l.fileName}</td>
+      <td>${l.detectedType ? typeBadge(l.detectedType) : '—'}</td>
+      <td style="font-size:11px">${partnerName(l.tradingPartnerId)}</td>
+      <td style="font-family:var(--mono);font-size:10px">${l.controlNumber||'—'}</td>
+      <td style="font-family:var(--mono)">${l.claimsProcessed||0}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${dur}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${rel(l.pickedUpAt)}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--muted2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${l.finalPath||''}">${finalName}</td>
+    </tr>`;
+  }).join('');
+}
+
+function changePage(dir) { page += dir; renderLogs(); }
+
+async function scanNow() {
+  const btn = document.getElementById('scan-btn');
+  const spinner = document.getElementById('scan-spinner');
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  try {
+    const res = await fetch('/api/watcher/scan', { method: 'POST' });
+    const data = await res.json();
+    if (data.filesProcessed === 0) {
+      toast('Inbox is empty — no files to process.', 'ok');
+    } else {
+      toast(`Processed ${data.filesProcessed} file(s): ${data.succeeded} succeeded, ${data.failed} failed`, data.failed>0?'err':'ok');
+    }
+    await loadStatus();
+  } catch(e) {
+    toast('Scan failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function statusBadge(s) {
+  const map={Success:'b-ok',Failed:'b-fail',Skipped:'b-skip',Pending:'b-pend'};
+  return `<span class="badge ${map[s]||'b-pend'}">${s}</span>`;
+}
+function typeBadge(t) {
+  const map={'837P':'b-ok','837I':'b-skip','837D':'b-pend',TA1:'b-pend','999':'b-skip'};
+  return `<span class="badge ${map[t]||'b-ok'}">${t}</span>`;
+}
+function partnerName(id) {
+  const pf = partners.find(p=>p.tradingPartnerId===id);
+  return pf ? pf.mappedPartnerName||pf.folderName : (id ? '#'+id : '—');
+}
+function fmt(n) { return (n||0).toLocaleString(); }
+function rel(d) {
+  if(!d) return '—';
+  const diff = Date.now()-new Date(d).getTime();
+  const m=Math.floor(diff/60000);
+  if(m<1) return 'just now';
+  if(m<60) return m+'m ago';
+  const h=Math.floor(m/60);
+  if(h<24) return h+'h ago';
+  return new Date(d).toLocaleDateString();
+}
+function toast(msg, type='ok') {
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.innerHTML=`<span>${type==='ok'?'✓':'✗'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity 0.3s';setTimeout(()=>el.remove(),300);},4000);
+}
+
+// Auto-refresh every 30s
+loadStatus();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
