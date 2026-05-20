@@ -53,9 +53,25 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
 
     private FileSystemWatcher? _fsw;
 
+
     // Tracks files currently being processed to avoid double-processing
     private readonly HashSet<string> _inFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+
+    // Persists a FileProcessingLog to the database
+    private async Task PersistLogAsync(FileProcessingLog log)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IFileProcessingLogRepository>();
+        if (log.Id == 0)
+        {
+            await repo.CreateAsync(log);
+        }
+        else
+        {
+            await repo.UpdateAsync(log);
+        }
+    }
 
     public static DateTime? LastScanAt => _lastScanAt;
     public static int TotalPickedUp => _totalPickedUp;
