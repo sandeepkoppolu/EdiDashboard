@@ -17,13 +17,45 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // ── Database ───────────────────────────────────────────────────────────────
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Data Source=edi_processor.db";
+var provider = builder.Configuration["Database:Provider"]?.Trim();
+provider = string.IsNullOrWhiteSpace(provider) ? "SqlServer" : provider;
 
-if (connectionString.Contains("Server="))
-    builder.Services.AddDbContext<EdiDbContext>(o => o.UseSqlServer(connectionString));
-else
-    builder.Services.AddDbContext<EdiDbContext>(o => o.UseSqlite(connectionString));
+switch (provider!.ToLowerInvariant())
+{
+    case "sqlserver":
+    case "mssql":
+    {
+        var cs = builder.Configuration.GetConnectionString("SqlServerConnection")
+                 ?? builder.Configuration.GetConnectionString("DefaultConnection")
+                 ?? throw new InvalidOperationException(
+                     "Missing connection string. Configure ConnectionStrings:SqlServerConnection.");
+        builder.Services.AddDbContext<EdiDbContext>(o => o.UseSqlServer(cs));
+        break;
+    }
+    case "postgres":
+    case "postgresql":
+    case "npgsql":
+    {
+        var cs = builder.Configuration.GetConnectionString("PostgresConnection")
+                 ?? builder.Configuration.GetConnectionString("DefaultConnection")
+                 ?? throw new InvalidOperationException(
+                     "Missing connection string. Configure ConnectionStrings:PostgresConnection.");
+
+        builder.Services.AddDbContext<EdiDbContextPostgres>(o => o.UseNpgsql(cs));
+        builder.Services.AddScoped<EdiDbContext>(sp => sp.GetRequiredService<EdiDbContextPostgres>());
+        break;
+    }
+    case "sqlite":
+    {
+        var cs = builder.Configuration.GetConnectionString("SqliteConnection")
+                 ?? "Data Source=edi_processor.db";
+        builder.Services.AddDbContext<EdiDbContext>(o => o.UseSqlite(cs));
+        break;
+    }
+    default:
+        throw new InvalidOperationException(
+            $"Unsupported Database:Provider '{provider}'. Supported values: SqlServer, Postgres, Sqlite.");
+}
 
 // ── Core application services ──────────────────────────────────────────────
 builder.Services.AddScoped<IEdiProcessingService,   EdiProcessingService>();

@@ -5,7 +5,7 @@ namespace EdiProcessor.Infrastructure.Data;
 
 public class EdiDbContext : DbContext
 {
-    public EdiDbContext(DbContextOptions<EdiDbContext> options) : base(options) { }
+    public EdiDbContext(DbContextOptions options) : base(options) { }
 
     public DbSet<TradingPartner> TradingPartners => Set<TradingPartner>();
     public DbSet<EdiTransaction> EdiTransactions => Set<EdiTransaction>();

@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>EDI Folder Watcher</title>
+<link rel="stylesheet" href="/css/deloitte-colors.css" />
 <link rel="stylesheet" href="/css/toggle-theme.css" />
 <style>
   :root {
@@ -13,7 +14,30 @@
     --mono:'Courier New',monospace;
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:28px;min-height:100vh}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+
+  /* ── Sidebar ── */
+  .sidebar{width:240px;min-height:100vh;background:var(--surf);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100}
+  .sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+  .sidebar-logo .logo-badge{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+  .sidebar-logo h2{font-size:18px;font-weight:700;color:var(--text);line-height:1.2}
+  .sidebar-nav{padding:16px 0;flex:1}
+  .nav-section-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;padding:8px 20px 4px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:500;transition:all 0.15s;border-left:3px solid transparent;text-decoration:none}
+  .nav-item:hover{color:var(--text);background:var(--surf2)}
+  .nav-item.active{color:var(--accent);background:rgba(0,255,163,0.06);border-left-color:var(--accent)}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0}
+  .sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+  /* ── Main layout ── */
+  .main{margin-left:240px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+  .topbar{background:var(--surf);border-bottom:1px solid var(--border);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+  .topbar-title{font-size:15px;font-weight:700}
+  .topbar-sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .topbar-actions{display:flex;align-items:center;gap:10px}
+  .content{padding:28px;flex:1}
+
+  @@media(max-width:900px){.sidebar{display:none}.main{margin-left:0}}
   h1{font-size:22px;font-weight:800;margin-bottom:4px}
   .sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:24px}
 
@@ -83,17 +107,6 @@
 </style>
 </head>
 <body>
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-  <h1>📁 EDI Folder Watcher</h1>
-  <div style="display:flex;gap:10px">
-    <button class="btn btn-ghost" onclick="loadStatus()">↻ Refresh</button>
-    <button class="btn btn-primary" id="scan-btn" onclick="scanNow()">
-      <span id="scan-spinner" class="spinner"></span>
-      ▶ Scan Inbox Now
-    </button>
-    <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
-  </div>
-</div>
 <script>
   function setTheme(theme) {
     document.body.classList.remove('theme-light', 'theme-dark');
@@ -104,13 +117,68 @@
     const current = document.body.classList.contains('theme-light') ? 'theme-light' : 'theme-dark';
     setTheme(current === 'theme-light' ? 'theme-dark' : 'theme-light');
   }
-  // On load, set theme from localStorage or default to light
   (function() {
     const saved = localStorage.getItem('edi-theme');
     setTheme(saved === 'theme-dark' ? 'theme-dark' : 'theme-light');
   })();
 </script>
-<div class="sub">Background service · polls inbox every <span id="poll-interval">—</span>s · auto-processes 837P/I/D, TA1, 999, 277CA</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-badge">EDI</div>
+    <h2>Command Center</h2>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Overview</div>
+    <a href="/Dashboard" class="nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      Dashboard
+    </a>
+    <div class="nav-section-label">EDI Data</div>
+    <a href="/Dashboard#transactions" class="nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Transactions
+    </a>
+    <a href="/Dashboard#claims" class="nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      Claims
+    </a>
+    <a href="/Dashboard#acks" class="nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Acknowledgments
+    </a>
+    <div class="nav-section-label">Config</div>
+    <a href="/Dashboard#partners" class="nav-item">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Trading Partners
+    </a>
+    <div class="nav-section-label">Operations</div>
+    <div class="nav-item active">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+      Folder Watcher
+    </div>
+  </nav>
+  <div class="sidebar-footer">EDI Processor v1.0</div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <div>
+      <div class="topbar-title">📁 Folder Watcher</div>
+      <div class="topbar-sub">Background service · polls every <span id="poll-interval">—</span>s · auto-processes 837P/I/D, TA1, 999, 277CA</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" onclick="loadStatus()">↻ Refresh</button>
+      <button class="btn btn-primary" id="scan-btn" onclick="scanNow()">
+        <span id="scan-spinner" class="spinner"></span>
+        ▶ Scan Inbox Now
+      </button>
+      <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
+    </div>
+  </header>
+  <div class="content">
 
 <!-- KPI row -->
 <div class="grid grid-4" style="margin-bottom:16px" id="kpi-row">
@@ -425,5 +493,7 @@ function toast(msg, type='ok') {
 loadStatus();
 setInterval(loadStatus, 30000);
 </script>
+  </div><!-- /.content -->
+</div><!-- /.main -->
 </body>
 </html>
