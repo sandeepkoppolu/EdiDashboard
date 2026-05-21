@@ -42,7 +42,7 @@ public class EdiController : ControllerBase
     public EdiController(IEdiProcessingService ediService) => _ediService = ediService;
 
     /// <summary>
-    /// Upload a raw EDI file (837P/I/D, TA1, or 999).
+    /// Upload raw EDI file(s). If tradingPartnerId is omitted/0, partner is auto-resolved from ISA06 and created when missing.
     /// </summary>
     [HttpPost("upload")]
     public async Task<ActionResult<object>> Upload(
@@ -102,7 +102,7 @@ public class EdiController : ControllerBase
     }
 
     /// <summary>
-    /// Submit raw EDI content as text (useful for API integrations).
+    /// Submit raw EDI content as text. If TradingPartnerId is 0, partner is auto-resolved from ISA06 and created when missing.
     /// </summary>
     [HttpPost("submit")]
     public async Task<ActionResult<EdiUploadResult>> Submit([FromBody] EdiSubmitRequest request)

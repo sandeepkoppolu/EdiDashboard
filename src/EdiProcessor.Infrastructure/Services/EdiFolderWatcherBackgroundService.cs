@@ -234,7 +234,7 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
             log.DetectedType = detectedType;
 
             // ── Resolve trading partner ──
-            int partnerId = await ResolvePartnerIdAsync(content, hintedPartnerId);
+            int partnerId = await ResolvePartnerIdAsync(content, detectedType, hintedPartnerId);
             log.TradingPartnerId = partnerId;
 
             // ── Process via the same service used by the web API ──
@@ -297,32 +297,87 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
 
     // ── Partner resolution ─────────────────────────────────────────────────
 
-    private async Task<int> ResolvePartnerIdAsync(string content, int? hintedPartnerId)
+    private async Task<int> ResolvePartnerIdAsync(string content, string detectedType, int? hintedPartnerId)
     {
         // 1. Use the sub-folder hint if already resolved
         if (hintedPartnerId.HasValue && hintedPartnerId.Value > 0)
             return hintedPartnerId.Value;
 
-        // 2. Try to read ISA06 from the file content
-        var isaId = ExtractIsa06(content);
-        if (!string.IsNullOrEmpty(isaId))
+        // 2. Try to resolve by ISA06/ISA08 with EDI-type awareness.
+        //    For TA1/999/277CA, sender/receiver are reversed, so prefer ISA08.
+        var isa06 = ExtractIsa06(content); // sender id
+        var isa05 = ExtractIsa05(content); // sender qualifier
+        var isa08 = ExtractIsa08(content); // receiver id
+        var isa07 = ExtractIsa07(content); // receiver qualifier
+        var isResponse = detectedType is "TA1" or "999" or "277CA";
+
+        var primaryId = isResponse ? isa08 : isa06;
+        var primaryQualifier = isResponse ? isa07 : isa05;
+        var secondaryId = isResponse ? isa06 : isa08;
+        var secondaryQualifier = isResponse ? isa05 : isa07;
+
+        if (!string.IsNullOrWhiteSpace(primaryId))
         {
-            var resolved = ResolvePartnerByInterchangeId(isaId);
-            if (resolved.HasValue) return resolved.Value;
+            var existingPrimary = ResolvePartnerByInterchangeId(primaryId);
+            if (existingPrimary.HasValue) return existingPrimary.Value;
         }
+
+        if (!string.IsNullOrWhiteSpace(secondaryId))
+        {
+            var existingSecondary = ResolvePartnerByInterchangeId(secondaryId);
+            if (existingSecondary.HasValue) return existingSecondary.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(primaryId))
+            return await ResolveOrCreatePartnerIdAsync(primaryId, primaryQualifier);
+        if (!string.IsNullOrWhiteSpace(secondaryId))
+            return await ResolveOrCreatePartnerIdAsync(secondaryId, secondaryQualifier);
 
         // 3. Fall back to default
         if (_opts.DefaultTradingPartnerId > 0)
         {
             _logger.LogWarning(
-                "Could not resolve trading partner from ISA06 '{Isa}'. Using default ID {Default}.",
-                isaId, _opts.DefaultTradingPartnerId);
+                "Could not resolve trading partner from ISA06 '{Isa06}' / ISA08 '{Isa08}'. Using default ID {Default}.",
+                isa06, isa08, _opts.DefaultTradingPartnerId);
             return _opts.DefaultTradingPartnerId;
         }
 
         throw new InvalidOperationException(
-            $"Cannot determine trading partner. ISA06='{isaId}'. " +
+            $"Cannot determine trading partner. ISA06='{isa06}', ISA08='{isa08}'. " +
             "Set EdiWatcher:DefaultTradingPartnerId in appsettings.json or use a named sub-folder.");
+    }
+
+    private async Task<int> ResolveOrCreatePartnerIdAsync(string interchangeId, string? interchangeQualifier)
+    {
+        var normalizedId = interchangeId.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedId))
+            throw new InvalidOperationException("Cannot resolve trading partner: empty interchange ID.");
+
+        using var scope = _scopeFactory.CreateScope();
+        var partnerSvc = scope.ServiceProvider.GetRequiredService<ITradingPartnerService>();
+
+        var existing = await partnerSvc.GetByInterchangeIdAsync(normalizedId);
+        if (existing != null)
+            return existing.Id;
+
+        var qualifier = string.IsNullOrWhiteSpace(interchangeQualifier)
+            ? "ZZ"
+            : interchangeQualifier.Trim();
+
+        var created = await partnerSvc.CreateAsync(new TradingPartner
+        {
+            Name = $"Auto-{normalizedId}",
+            InterchangeId = normalizedId,
+            InterchangeQualifier = qualifier,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        _logger.LogInformation(
+            "Auto-created trading partner {PartnerId} for ISA06 '{InterchangeId}' (ISA05 '{Qualifier}').",
+            created.Id, created.InterchangeId, created.InterchangeQualifier);
+
+        return created.Id;
     }
 
     private int? ResolvePartnerByInterchangeId(string interchangeId)
@@ -343,6 +398,33 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
         return parts.Length > 6 ? parts[6].Trim() : string.Empty;
     }
 
+    private static string ExtractIsa05(string content)
+    {
+        // ISA05 = interchange ID qualifier for sender.
+        if (content.Length < 106) return string.Empty;
+        var sep = content[3];
+        var parts = content.Substring(0, 110).Split(sep);
+        return parts.Length > 5 ? parts[5].Trim() : string.Empty;
+    }
+
+    private static string ExtractIsa07(string content)
+    {
+        // ISA07 = interchange ID qualifier for receiver.
+        if (content.Length < 106) return string.Empty;
+        var sep = content[3];
+        var parts = content.Substring(0, 110).Split(sep);
+        return parts.Length > 7 ? parts[7].Trim() : string.Empty;
+    }
+
+    private static string ExtractIsa08(string content)
+    {
+        // ISA08 = interchange receiver ID.
+        if (content.Length < 106) return string.Empty;
+        var sep = content[3];
+        var parts = content.Substring(0, 110).Split(sep);
+        return parts.Length > 8 ? parts[8].Trim() : string.Empty;
+    }
+
     // ── File system helpers ────────────────────────────────────────────────
 
     private void EnsureFoldersExist()
@@ -354,24 +436,7 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
         foreach (var id in new[] { "BCBS001", "AETNA01", "UHC0001", "CIGNA01" })
             Directory.CreateDirectory(Path.Combine(Path.GetFullPath(_opts.InboxPath), id));
 
-        // Write a README into the inbox
-        var readme = Path.Combine(Path.GetFullPath(_opts.InboxPath), "README.txt");
-        if (!File.Exists(readme))
-            File.WriteAllText(readme,
-                "EDI INBOX\n" +
-                "=========\n\n" +
-                "Drop EDI files here to have them automatically processed.\n\n" +
-                "FOLDER STRUCTURE\n" +
-                "  Place files in a sub-folder named after the trading partner's\n" +
-                "  Interchange ID (ISA06), e.g.:\n\n" +
-                "    edi-inbox/BCBS001/claim.edi\n" +
-                "    edi-inbox/AETNA01/batch.x12\n\n" +
-                "  Or drop files in the root — the processor will detect the\n" +
-                "  trading partner from the ISA06 element automatically.\n\n" +
-                "SUPPORTED TYPES\n" +
-                "  837P, 837I, 837D, TA1, 999, 277CA\n\n" +
-                "EXTENSIONS\n" +
-                "  .edi .txt .x12 .837 .999 .ta1 .277\n");
+
     }
 
     private string BuildProcessedPath(string fileName)

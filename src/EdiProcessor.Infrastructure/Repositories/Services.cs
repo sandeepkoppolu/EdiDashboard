@@ -24,18 +24,13 @@ public class EdiProcessingService : IEdiProcessingService
 
         try
         {
-            // Verify trading partner exists
-            var partner = await _db.TradingPartners.FindAsync(tradingPartnerId);
-            if (partner == null)
-            {
-                result.Success = false;
-                result.Message = $"Trading partner ID {tradingPartnerId} not found.";
-                return result;
-            }
-
             // Detect type
             var ediType = EdiTypeDetector.Detect(rawContent);
             result.TransactionType = ediType;
+
+            // Resolve explicit partner ID, or auto-detect/create from ISA06/ISA08 when absent.
+            var partner = await ResolveOrCreateTradingPartnerAsync(rawContent, tradingPartnerId, ediType);
+            tradingPartnerId = partner.Id;
 
             _logger.LogInformation("Processing {EdiType} from partner {Partner}", ediType, partner.Name);
 
@@ -76,6 +71,72 @@ public class EdiProcessingService : IEdiProcessingService
         }
 
         return result;
+    }
+
+    private async Task<TradingPartner> ResolveOrCreateTradingPartnerAsync(string rawContent, int tradingPartnerId, string ediType)
+    {
+        if (tradingPartnerId > 0)
+        {
+            var explicitPartner = await _db.TradingPartners.FindAsync(tradingPartnerId);
+            if (explicitPartner != null)
+                return explicitPartner;
+
+            throw new InvalidOperationException($"Trading partner ID {tradingPartnerId} not found.");
+        }
+
+        var isa06 = ExtractIsaElement(rawContent, 6); // sender id
+        var isa05 = ExtractIsaElement(rawContent, 5); // sender qualifier
+        var isa08 = ExtractIsaElement(rawContent, 8); // receiver id
+        var isa07 = ExtractIsaElement(rawContent, 7); // receiver qualifier
+
+        var isResponse = ediType is "TA1" or "999" or "277CA";
+        var primaryId = isResponse ? isa08 : isa06;
+        var primaryQualifier = isResponse ? isa07 : isa05;
+        var secondaryId = isResponse ? isa06 : isa08;
+        var secondaryQualifier = isResponse ? isa05 : isa07;
+
+        TradingPartner? existing = null;
+        if (!string.IsNullOrWhiteSpace(primaryId))
+            existing = await _db.TradingPartners.FirstOrDefaultAsync(p => p.InterchangeId == primaryId.Trim());
+        if (existing == null && !string.IsNullOrWhiteSpace(secondaryId))
+            existing = await _db.TradingPartners.FirstOrDefaultAsync(p => p.InterchangeId == secondaryId.Trim());
+        if (existing != null)
+            return existing;
+
+        var createId = !string.IsNullOrWhiteSpace(primaryId) ? primaryId.Trim() : secondaryId.Trim();
+        var createQualifier = !string.IsNullOrWhiteSpace(primaryId)
+            ? primaryQualifier
+            : secondaryQualifier;
+        if (string.IsNullOrWhiteSpace(createId))
+            throw new InvalidOperationException("Trading partner could not be resolved because ISA06 and ISA08 are both missing.");
+
+        var created = new TradingPartner
+        {
+            Name = $"Auto-{createId}",
+            InterchangeId = createId,
+            InterchangeQualifier = string.IsNullOrWhiteSpace(createQualifier) ? "ZZ" : createQualifier.Trim(),
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.TradingPartners.Add(created);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Auto-created trading partner {PartnerId} for EDI {EdiType} using interchange ID '{InterchangeId}'.",
+            created.Id, ediType, created.InterchangeId);
+        return created;
+    }
+
+    private static string ExtractIsaElement(string content, int elementIndex)
+    {
+        if (string.IsNullOrWhiteSpace(content) || content.Length < 106)
+            return string.Empty;
+
+        var sep = content[3];
+        var head = content.Length > 200 ? content[..200] : content;
+        var parts = head.Split(sep);
+        return parts.Length > elementIndex ? parts[elementIndex].Trim() : string.Empty;
     }
 
     private async Task Process837Async(string rawContent, int tradingPartnerId, EdiUploadResult result)

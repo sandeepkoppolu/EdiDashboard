@@ -309,6 +309,7 @@
   .badge-ta1  { background: rgba(255,107,53,0.12); color: var(--warn); }
   .badge-999  { background: rgba(160,100,255,0.12); color: #a064ff; }
   .badge-277ca{ background: rgba(255,140,0,0.12); color: #ff8c00; }
+  .badge-auto-created { background: rgba(0,136,255,0.12); color: #0077cc; }
   .badge-837p { background: rgba(0,229,160,0.12); color: var(--accent); }
   .badge-837i { background: rgba(0,136,255,0.12); color: var(--accent2); }
   .badge-837d { background: rgba(255,200,0,0.12); color: #ffc800; }
@@ -581,7 +582,7 @@
         <div class="kpi-card" style="--kpi-color:#a064ff">
           <div class="kpi-label">Transactions</div>
           <div class="kpi-value" id="kpi-txns">—</div>
-          <div class="kpi-sub">837, TA1, 999</div>
+          <div class="kpi-sub">837, TA1, 999, 277CA</div>
           <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg></div>
         </div>
       </div>
@@ -734,7 +735,7 @@
     <div class="form-group">
       <label class="form-label">Trading Partner</label>
       <select class="form-control" id="upload-partner">
-        <option value="">Select trading partner…</option>
+        <option value="">Auto-detect from ISA06 (create if new)</option>
       </select>
     </div>
 
@@ -850,7 +851,7 @@ async function loadPartners() {
   partners = await res.json();
   const opts = partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   document.getElementById('global-partner').innerHTML = '<option value="">All Partners</option>' + opts;
-  document.getElementById('upload-partner').innerHTML = '<option value="">Select trading partner…</option>' + opts;
+  document.getElementById('upload-partner').innerHTML = '<option value="">Auto-detect from ISA06 (create if new)</option>' + opts;
 }
 
 function renderPartnersTable() {
@@ -859,7 +860,7 @@ function renderPartnersTable() {
   tbody.innerHTML = partners.map(p => `
     <tr>
       <td style="font-family:var(--mono);color:var(--muted)">${p.id}</td>
-      <td><strong>${p.name}</strong></td>
+      <td><strong>${p.name}</strong>${p.name && p.name.startsWith('Auto-') ? ' <span class="badge badge-auto-created" style="font-size:9px;margin-left:6px">Auto-Created</span>' : ''}</td>
       <td style="font-family:var(--mono)">${p.interchangeId || '—'}</td>
       <td style="font-family:var(--mono)">${p.interchangeQualifier || '—'}</td>
       <td><span class="badge ${p.isActive ? 'badge-accepted' : 'badge-rejected'}">${p.isActive ? 'Active' : 'Inactive'}</span></td>
@@ -1185,7 +1186,6 @@ async function uploadFile() {
   const partnerId = document.getElementById('upload-partner').value;
   const resultEl = document.getElementById('upload-result');
 
-  if (!partnerId) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select a trading partner.'; return; }
   if (!selectedFiles.length) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select at least one file to upload.'; return; }
 
   document.getElementById('upload-spinner').style.display = 'inline-block';
@@ -1193,7 +1193,7 @@ async function uploadFile() {
   resultEl.style.display = 'none';
 
   const form = new FormData();
-  form.append('tradingPartnerId', partnerId);
+  if (partnerId) form.append('tradingPartnerId', partnerId);
   selectedFiles.forEach(file => form.append('files', file));
 
   try {
