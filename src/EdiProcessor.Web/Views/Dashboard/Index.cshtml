@@ -722,7 +722,7 @@
 <div class="modal-overlay" id="upload-modal">
   <div class="modal">
     <button class="modal-close" onclick="document.getElementById('upload-modal').classList.remove('open')">✕</button>
-    <h2>Upload EDI File</h2>
+    <h2>Upload EDI Files</h2>
     <p class="modal-sub">Supports 837P/I/D, TA1, and 999 transactions</p>
 
     <div class="form-group">
@@ -733,9 +733,9 @@
     </div>
 
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <input type="file" id="file-input" accept=".edi,.txt,.x12,.837,.999,.ta1" onchange="fileSelected(this)" />
+      <input type="file" id="file-input" accept=".edi,.txt,.x12,.837,.999,.ta1" multiple onchange="fileSelected(this)" />
       <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-      <p>Drop EDI file here or <strong>click to browse</strong></p>
+      <p>Drop EDI files here or <strong>click to browse</strong></p>
       <p style="margin-top:4px;font-size:11px;">.edi .txt .x12 .837 .999 .ta1</p>
     </div>
     <div class="file-selected" id="file-selected-name"></div>
@@ -744,7 +744,7 @@
       <button class="btn btn-secondary" onclick="document.getElementById('upload-modal').classList.remove('open')">Cancel</button>
       <button class="btn btn-primary" id="upload-btn" onclick="uploadFile()">
         <span id="upload-spinner" class="spinner" style="display:none"></span>
-        Upload & Process
+        Upload & Process Files
       </button>
     </div>
   </div>
@@ -1125,13 +1125,26 @@ async function loadAcks() {
 }
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
-let selectedFile = null;
+let selectedFiles = [];
 
 function fileSelected(input) {
-  selectedFile = input.files[0];
+  selectedFiles = Array.from(input.files || []);
+  renderSelectedFiles();
+}
+
+function renderSelectedFiles() {
   const el = document.getElementById('file-selected-name');
-  el.style.display = selectedFile ? 'block' : 'none';
-  el.textContent = selectedFile ? `📄 ${selectedFile.name} (${(selectedFile.size/1024).toFixed(1)} KB)` : '';
+  if (!selectedFiles.length) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  const totalSizeKb = selectedFiles.reduce((sum, f) => sum + (f.size / 1024), 0);
+  const preview = selectedFiles.slice(0, 3).map(f => f.name).join(', ');
+  const suffix = selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : '';
+  el.style.display = 'block';
+  el.textContent = `📄 ${selectedFiles.length} file(s): ${preview}${suffix} (${totalSizeKb.toFixed(1)} KB)`;
 }
 
 function setupDropZone() {
@@ -1141,11 +1154,10 @@ function setupDropZone() {
   zone.addEventListener('drop', e => {
     e.preventDefault();
     zone.classList.remove('dragover');
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      selectedFile = file;
-      document.getElementById('file-selected-name').style.display = 'block';
-      document.getElementById('file-selected-name').textContent = `📄 ${file.name}`;
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) {
+      selectedFiles = files;
+      renderSelectedFiles();
     }
   });
 }
@@ -1155,7 +1167,7 @@ async function uploadFile() {
   const resultEl = document.getElementById('upload-result');
 
   if (!partnerId) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select a trading partner.'; return; }
-  if (!selectedFile) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select a file to upload.'; return; }
+  if (!selectedFiles.length) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select at least one file to upload.'; return; }
 
   document.getElementById('upload-spinner').style.display = 'inline-block';
   document.getElementById('upload-btn').disabled = true;
@@ -1163,16 +1175,25 @@ async function uploadFile() {
 
   const form = new FormData();
   form.append('tradingPartnerId', partnerId);
-  form.append('file', selectedFile);
+  selectedFiles.forEach(file => form.append('files', file));
 
   try {
     const res = await fetch('/api/edi/upload', { method: 'POST', body: form });
     const data = await res.json();
     resultEl.style.display = 'block';
     if (res.ok) {
-      resultEl.className = 'result-box success';
-      resultEl.textContent = `✓ ${data.message} (${data.transactionType}, Control: ${data.controlNumber}, Claims: ${data.claimsProcessed})`;
-      toast(data.message, 'success');
+      if (Array.isArray(data.results)) {
+        const failed = data.results.filter(r => !r.success);
+        resultEl.className = failed.length ? 'result-box error' : 'result-box success';
+        resultEl.textContent =
+          `Processed ${data.totalFiles} file(s): ${data.successCount} succeeded, ${data.failureCount} failed.` +
+          (failed.length ? ` Failed: ${failed.slice(0, 3).map(f => f.fileName).join(', ')}` : '');
+        toast(`Upload complete: ${data.successCount}/${data.totalFiles} succeeded`, failed.length ? 'error' : 'success');
+      } else {
+        resultEl.className = 'result-box success';
+        resultEl.textContent = `✓ ${data.message} (${data.transactionType}, Control: ${data.controlNumber}, Claims: ${data.claimsProcessed})`;
+        toast(data.message, 'success');
+      }
       loadDashboard();
     } else {
       resultEl.className = 'result-box error';

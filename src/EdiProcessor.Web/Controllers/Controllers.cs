@@ -45,18 +45,60 @@ public class EdiController : ControllerBase
     /// Upload a raw EDI file (837P/I/D, TA1, or 999).
     /// </summary>
     [HttpPost("upload")]
-    public async Task<ActionResult<EdiUploadResult>> Upload(
+    public async Task<ActionResult<object>> Upload(
         [FromForm] int tradingPartnerId,
-        IFormFile file)
+        [FromForm] List<IFormFile>? files,
+        IFormFile? file)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest("No file uploaded.");
+        var uploadFiles = new List<IFormFile>();
 
-        using var reader = new StreamReader(file.OpenReadStream());
-        var content = await reader.ReadToEndAsync();
+        if (files != null)
+            uploadFiles.AddRange(files.Where(f => f.Length > 0));
+        if (file != null && file.Length > 0)
+            uploadFiles.Add(file);
 
-        var result = await _ediService.ProcessEdiFileAsync(content, tradingPartnerId);
-        return result.Success ? Ok(result) : BadRequest(result);
+        if (uploadFiles.Count == 0)
+            return BadRequest("No files uploaded.");
+
+        if (uploadFiles.Count == 1)
+        {
+            using var singleReader = new StreamReader(uploadFiles[0].OpenReadStream());
+            var singleContent = await singleReader.ReadToEndAsync();
+
+            var singleResult = await _ediService.ProcessEdiFileAsync(singleContent, tradingPartnerId);
+            return singleResult.Success ? Ok(singleResult) : BadRequest(singleResult);
+        }
+
+        var batchResults = new List<(string FileName, EdiUploadResult Result)>();
+
+        foreach (var uploadFile in uploadFiles)
+        {
+            using var reader = new StreamReader(uploadFile.OpenReadStream());
+            var content = await reader.ReadToEndAsync();
+
+            var result = await _ediService.ProcessEdiFileAsync(content, tradingPartnerId);
+            batchResults.Add((uploadFile.FileName, result));
+        }
+
+        var successCount = batchResults.Count(r => r.Result.Success);
+        var failureCount = batchResults.Count - successCount;
+
+        return Ok(new
+        {
+            totalFiles = batchResults.Count,
+            successCount,
+            failureCount,
+            results = batchResults.Select(r => new
+            {
+                fileName = r.FileName,
+                success = r.Result.Success,
+                message = r.Result.Message,
+                transactionType = r.Result.TransactionType,
+                controlNumber = r.Result.ControlNumber,
+                claimsProcessed = r.Result.ClaimsProcessed,
+                errors = r.Result.Errors
+            })
+        });
     }
 
     /// <summary>

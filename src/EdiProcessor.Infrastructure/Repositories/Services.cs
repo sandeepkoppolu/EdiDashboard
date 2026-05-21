@@ -100,6 +100,42 @@ public class EdiProcessingService : IEdiProcessingService
 
         await _db.SaveChangesAsync();
 
+        // --- NEW: Reconcile with any pre-existing TA1/999 acknowledgments ---
+        // 1. TA1: match on control number
+        var ta1 = await _db.Acknowledgments
+            .Where(a => a.AckType == "TA1" &&
+                        a.ControlNumber == transaction.ControlNumber &&
+                        a.EdiTransaction.TradingPartnerId == tradingPartnerId)
+            .OrderByDescending(a => a.ReceivedAt)
+            .FirstOrDefaultAsync();
+        if (ta1 != null)
+        {
+            transaction.Status = ta1.AcknowledgmentCode switch { "A" => "Accepted", "E" => "Accepted", "R" => "Rejected", _ => transaction.Status };
+            var claimsToUpdate = await _db.Claims.Where(c => c.EdiTransactionId == transaction.Id).ToListAsync();
+            foreach (var claim in claimsToUpdate) claim.Status = transaction.Status;
+        }
+
+        // 2. 999: match on transaction set control number
+        var nine99 = await _db.Acknowledgments
+            .Where(a => a.AckType == "999" &&
+                        a.TransactionSetControlNumber == transaction.ControlNumber &&
+                        a.EdiTransaction.TradingPartnerId == tradingPartnerId)
+            .OrderByDescending(a => a.ReceivedAt)
+            .FirstOrDefaultAsync();
+        if (nine99 != null)
+        {
+            transaction.Status = nine99.AcknowledgmentCode switch { "A" => "Accepted", "E" => "Accepted", "R" => "Rejected", _ => transaction.Status };
+            transaction.ErrorDescription = nine99.AcknowledgmentCode == "R" ? nine99.Description : null;
+            var claimsToUpdate = await _db.Claims.Where(c => c.EdiTransactionId == transaction.Id).ToListAsync();
+            foreach (var claim in claimsToUpdate)
+            {
+                claim.Status = transaction.Status;
+                if (transaction.Status == "Rejected") claim.RejectionReason = nine99.Description;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
         result.ControlNumber = transaction.ControlNumber;
         result.ClaimsProcessed = claims.Count;
         result.Message = $"Successfully processed {claims.Count} claim(s) from {transaction.TransactionType} transaction.";
