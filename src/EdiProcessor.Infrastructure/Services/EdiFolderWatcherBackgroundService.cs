@@ -369,9 +369,9 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
                 "  Or drop files in the root — the processor will detect the\n" +
                 "  trading partner from the ISA06 element automatically.\n\n" +
                 "SUPPORTED TYPES\n" +
-                "  837P, 837I, 837D, TA1, 999\n\n" +
+                "  837P, 837I, 837D, TA1, 999, 277CA\n\n" +
                 "EXTENSIONS\n" +
-                "  .edi .txt .x12 .837 .999 .ta1\n");
+                "  .edi .txt .x12 .837 .999 .ta1 .277\n");
     }
 
     private string BuildProcessedPath(string fileName)

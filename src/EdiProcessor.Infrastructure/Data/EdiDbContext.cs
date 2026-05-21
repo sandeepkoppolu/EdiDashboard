@@ -12,6 +12,7 @@ public class EdiDbContext : DbContext
     public DbSet<Claim837> Claims => Set<Claim837>();
     public DbSet<ServiceLine> ServiceLines => Set<ServiceLine>();
     public DbSet<AcknowledgmentRecord> Acknowledgments => Set<AcknowledgmentRecord>();
+    public DbSet<Claim277CA> Claims277CA => Set<Claim277CA>();
     public DbSet<FileProcessingLog> FileProcessingLogs => Set<FileProcessingLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -90,6 +91,34 @@ public class EdiDbContext : DbContext
              .WithMany(x => x.Acknowledgments)
              .HasForeignKey(x => x.EdiTransactionId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Claim277CA
+        modelBuilder.Entity<Claim277CA>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SubmitterClaimId).HasMaxLength(38);
+            e.Property(x => x.PayerClaimNumber).HasMaxLength(38);
+            e.Property(x => x.StatusCategoryCode).HasMaxLength(3);
+            e.Property(x => x.StatusCode).HasMaxLength(3);
+            e.Property(x => x.StatusDescription).HasMaxLength(300);
+            e.Property(x => x.ActionCode).HasMaxLength(3);
+            e.Property(x => x.PatientName).HasMaxLength(100);
+            e.Property(x => x.ProviderName).HasMaxLength(100);
+            e.Property(x => x.ProviderId).HasMaxLength(20);
+            e.Property(x => x.TotalClaimChargeAmount).HasPrecision(12, 2);
+            e.Property(x => x.PaymentAmount).HasPrecision(12, 2);
+            e.HasOne(x => x.EdiTransaction)
+             .WithMany()
+             .HasForeignKey(x => x.EdiTransactionId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Linked837Transaction)
+             .WithMany()
+             .HasForeignKey(x => x.Linked837TransactionId)
+             .OnDelete(DeleteBehavior.ClientSetNull)
+             .IsRequired(false);
+            e.HasIndex(x => x.SubmitterClaimId);
+            e.HasIndex(x => x.ReceivedAt);
         });
 
         // FileProcessingLog

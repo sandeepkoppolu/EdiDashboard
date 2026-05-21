@@ -55,9 +55,13 @@ public class EdiProcessingService : IEdiProcessingService
                     await Process999Async(rawContent, tradingPartnerId, result);
                     break;
 
+                case "277CA":
+                    await Process277CaAsync(rawContent, tradingPartnerId, result);
+                    break;
+
                 default:
                     result.Success = false;
-                    result.Message = $"Unsupported EDI type: {ediType}. Supported: 837P, 837I, 837D, TA1, 999.";
+                    result.Message = $"Unsupported EDI type: {ediType}. Supported: 837P, 837I, 837D, TA1, 999, 277CA.";
                     return result;
             }
 
@@ -228,6 +232,63 @@ public class EdiProcessingService : IEdiProcessingService
         result.ControlNumber = transaction.ControlNumber;
         result.Message = $"999 processed. {acks.Count} functional group(s) acknowledged. Status: {transaction.Status}";
     }
+
+    private async Task Process277CaAsync(string rawContent, int tradingPartnerId, EdiUploadResult result)
+    {
+        var parser = new Edi277CaParser();
+        var (transaction, claimStatuses) = parser.Parse(rawContent, tradingPartnerId);
+
+        _db.EdiTransactions.Add(transaction);
+        await _db.SaveChangesAsync();
+
+        foreach (var cs in claimStatuses)
+        {
+            cs.EdiTransactionId = transaction.Id;
+
+            // Link to the matching 837 transaction via submitter claim ID (CLM01)
+            if (!string.IsNullOrEmpty(cs.SubmitterClaimId))
+            {
+                var matched837 = await _db.Claims
+                    .Where(c => c.ClaimNumber == cs.SubmitterClaimId &&
+                                c.EdiTransaction.TradingPartnerId == tradingPartnerId)
+                    .Include(c => c.EdiTransaction)
+                    .OrderByDescending(c => c.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (matched837 != null)
+                {
+                    cs.Linked837TransactionId = matched837.EdiTransactionId;
+
+                    // Update the claim status based on 277CA status category
+                    var newStatus = MapStcCategoryToClaimStatus(cs.StatusCategoryCode);
+                    if (newStatus != null)
+                    {
+                        matched837.Status = newStatus;
+                        if (newStatus == "Rejected") matched837.RejectionReason = cs.StatusDescription;
+                    }
+                }
+            }
+
+            _db.Claims277CA.Add(cs);
+        }
+
+        await _db.SaveChangesAsync();
+
+        result.ControlNumber = transaction.ControlNumber;
+        result.ClaimsProcessed = claimStatuses.Count;
+        result.Message = $"277CA processed. {claimStatuses.Count} claim status(es) received.";
+    }
+
+    private static string? MapStcCategoryToClaimStatus(string? categoryCode) =>
+        categoryCode switch
+        {
+            "A1" or "A2" or "A3" or "A8" => "Accepted",
+            "A4" or "A7" or "R3" => "Rejected",
+            "F1" => "Accepted",
+            "F2" => "Rejected",
+            "P1" or "P2" or "P3" or "P4" => "Pending",
+            _ => null   // Don't overwrite status for unknown categories
+        };
 }
 
 public class MetricsService : IMetricsService

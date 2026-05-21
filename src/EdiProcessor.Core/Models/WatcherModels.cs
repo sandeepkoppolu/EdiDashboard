@@ -27,7 +27,7 @@ public class EdiWatcherOptions
     public int PollingIntervalSeconds { get; set; } = 30;
 
     /// <summary>File extensions to pick up (case-insensitive).</summary>
-    public string[] Extensions { get; set; } = [".edi", ".txt", ".x12", ".837", ".999", ".ta1", ".270", ".835"];
+    public string[] Extensions { get; set; } = [".edi", ".txt", ".dat", ".x12", ".837", ".999", ".ta1", ".270", ".277", ".835"];
 
     /// <summary>If true, use FileSystemWatcher for near-instant pickup in
     /// addition to the polling fallback.</summary>
@@ -55,7 +55,7 @@ public class FileProcessingLog
     public string OriginalPath { get; set; } = string.Empty;
     public string FinalPath { get; set; } = string.Empty;
     public long FileSizeBytes { get; set; }
-    public string? DetectedType { get; set; }       // 837P, TA1, 999, UNKNOWN …
+    public string? DetectedType { get; set; }       // 837P, TA1, 999, 277CA, UNKNOWN …
     public int? TradingPartnerId { get; set; }
     public string Status { get; set; } = "Pending"; // Pending, Success, Failed, Skipped
     public string? ErrorMessage { get; set; }

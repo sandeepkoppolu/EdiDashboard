@@ -66,7 +66,7 @@ public class AcknowledgmentRecord
     public int Id { get; set; }
     public int EdiTransactionId { get; set; }
     public EdiTransaction EdiTransaction { get; set; } = null!;
-    public string AckType { get; set; } = string.Empty;  // "TA1" or "999"
+    public string AckType { get; set; } = string.Empty;  // "TA1", "999", or "277CA"
     public string ControlNumber { get; set; } = string.Empty;
     public string AcknowledgmentCode { get; set; } = string.Empty;  // A=Accepted, R=Rejected, E=Error
     public string? NoteCode { get; set; }
@@ -76,6 +76,56 @@ public class AcknowledgmentRecord
     public string? FunctionalGroupControlNumber { get; set; }
     public string? TransactionSetControlNumber { get; set; }
     public string? ErrorCode { get; set; }
+}
+
+/// <summary>
+/// Represents a single claim-level status entry from an inbound 277CA (Claim Acknowledgment).
+/// One 277CA file can contain acknowledgments for many claims.
+/// </summary>
+public class Claim277CA
+{
+    public int Id { get; set; }
+
+    /// <summary>FK → EdiTransaction row for the 277CA interchange.</summary>
+    public int EdiTransactionId { get; set; }
+    public EdiTransaction EdiTransaction { get; set; } = null!;
+
+    /// <summary>FK → the matched 837 EdiTransaction, if found by submitter claim ID.</summary>
+    public int? Linked837TransactionId { get; set; }
+    public EdiTransaction? Linked837Transaction { get; set; }
+
+    /// <summary>REF*1K – the submitter-assigned claim ID (matches CLM01 in the 837).</summary>
+    public string SubmitterClaimId { get; set; } = string.Empty;
+
+    /// <summary>REF*D9 – payer-assigned ICN/claim number.</summary>
+    public string? PayerClaimNumber { get; set; }
+
+    /// <summary>STC01-01 – status category code (e.g. A1, D0, P1, F1, R3).</summary>
+    public string? StatusCategoryCode { get; set; }
+
+    /// <summary>STC01-02 – status code within the category.</summary>
+    public string? StatusCode { get; set; }
+
+    /// <summary>Human-readable status description derived from STC codes.</summary>
+    public string? StatusDescription { get; set; }
+
+    /// <summary>STC02 – effective status date.</summary>
+    public DateTime? StatusDate { get; set; }
+
+    /// <summary>STC03 – action code (WQ=Pending, U=Finalized, etc.).</summary>
+    public string? ActionCode { get; set; }
+
+    /// <summary>STC04 – total claim charge amount.</summary>
+    public decimal? TotalClaimChargeAmount { get; set; }
+
+    /// <summary>STC05 – payment amount (when finalized).</summary>
+    public decimal? PaymentAmount { get; set; }
+
+    public string? PatientName { get; set; }
+    public string? ProviderName { get; set; }
+    public string? ProviderId { get; set; }
+
+    public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
 }
 
 // ---- DTOs returned to the API / views ----

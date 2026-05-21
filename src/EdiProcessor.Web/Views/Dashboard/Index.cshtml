@@ -6,18 +6,21 @@
 <title>EDI Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/deloitte-colors.css" />
+<link rel="stylesheet" href="/css/toggle-theme.css" />
 <style>
+
   :root {
-    --bg: #0a0d14;
-    --surface: #111620;
-    --surface2: #161c28;
-    --border: #1e2736;
-    --accent: #00e5a0;
+    --bg: var(--bg, #ffffff);
+    --surface: var(--surf, #f5f5f5);
+    --surface2: #eaeaea;
+    --border: #e0e0e0;
+    --accent: var(--primary, #86BC25);
     --accent2: #0088ff;
     --warn: #ff6b35;
     --danger: #ff3860;
-    --text: #e2e8f4;
-    --muted: #5a6885;
+    --text: var(--text, #000000);
+    --muted: var(--muted, #666666);
     --mono: 'Space Mono', monospace;
     --sans: 'DM Sans', sans-serif;
   }
@@ -305,6 +308,7 @@
   .badge-received  { background: rgba(0,136,255,0.12); color: var(--accent2); }
   .badge-ta1  { background: rgba(255,107,53,0.12); color: var(--warn); }
   .badge-999  { background: rgba(160,100,255,0.12); color: #a064ff; }
+  .badge-277ca{ background: rgba(255,140,0,0.12); color: #ff8c00; }
   .badge-837p { background: rgba(0,229,160,0.12); color: var(--accent); }
   .badge-837i { background: rgba(0,136,255,0.12); color: var(--accent2); }
   .badge-837d { background: rgba(255,200,0,0.12); color: #ffc800; }
@@ -522,6 +526,7 @@
       <select class="filter-select" id="global-partner" onchange="globalFilter()">
         <option value="">All Partners</option>
       </select>
+      <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
       <button class="btn btn-primary" onclick="document.getElementById('upload-modal').classList.add('open')">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
         Upload EDI
@@ -645,6 +650,7 @@
           <option value="837D">837D</option>
           <option value="TA1">TA1</option>
           <option value="999">999</option>
+          <option value="277CA">277CA</option>
         </select>
         <button class="btn btn-secondary" onclick="loadTransactions()">Refresh</button>
       </div>
@@ -723,7 +729,7 @@
   <div class="modal">
     <button class="modal-close" onclick="document.getElementById('upload-modal').classList.remove('open')">✕</button>
     <h2>Upload EDI Files</h2>
-    <p class="modal-sub">Supports 837P/I/D, TA1, and 999 transactions</p>
+    <p class="modal-sub">Supports 837P/I/D, TA1, 999, and 277CA transactions</p>
 
     <div class="form-group">
       <label class="form-label">Trading Partner</label>
@@ -733,10 +739,10 @@
     </div>
 
     <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <input type="file" id="file-input" accept=".edi,.txt,.x12,.837,.999,.ta1" multiple onchange="fileSelected(this)" />
+      <input type="file" id="file-input" accept=".edi,.txt,.x12,.837,.999,.ta1,.277" multiple onchange="fileSelected(this)" />
       <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
       <p>Drop EDI files here or <strong>click to browse</strong></p>
-      <p style="margin-top:4px;font-size:11px;">.edi .txt .x12 .837 .999 .ta1</p>
+      <p style="margin-top:4px;font-size:11px;">.edi .txt .x12 .837 .999 .ta1 .277</p>
     </div>
     <div class="file-selected" id="file-selected-name"></div>
     <div id="upload-result" class="result-box"></div>
@@ -798,8 +804,21 @@ let selectedPartnerId = null;
 let txPage = 1, claimPage = 1, ackPage = 1;
 const PAGE_SIZE = 25;
 
+function setTheme(theme) {
+  document.body.classList.remove('theme-light', 'theme-dark');
+  document.body.classList.add(theme);
+  localStorage.setItem('edi-theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.body.classList.contains('theme-light') ? 'theme-light' : 'theme-dark';
+  setTheme(current === 'theme-light' ? 'theme-dark' : 'theme-light');
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
+  const saved = localStorage.getItem('edi-theme');
+  setTheme(saved === 'theme-dark' ? 'theme-dark' : 'theme-light');
   await loadPartners();
   loadDashboard();
   setupDropZone();
@@ -1226,7 +1245,7 @@ function statusBadge(s) {
 }
 
 function typeBadge(t) {
-  const map = { TA1: 'badge-ta1', '999': 'badge-999', '837P': 'badge-837p', '837I': 'badge-837i', '837D': 'badge-837d' };
+  const map = { TA1: 'badge-ta1', '999': 'badge-999', '277CA': 'badge-277ca', '837P': 'badge-837p', '837I': 'badge-837i', '837D': 'badge-837d' };
   return `<span class="badge ${map[t] || 'badge-received'}">${t || '—'}</span>`;
 }
 

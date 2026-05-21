@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>EDI Folder Watcher</title>
+<link rel="stylesheet" href="/css/toggle-theme.css" />
 <style>
   :root {
     --bg:#080b10;--surf:#0d1117;--surf2:#131820;--border:#1e2b3a;
@@ -51,7 +52,7 @@
   .btn-ghost{background:transparent;color:var(--text);border-color:var(--border)}
   .btn-ghost:hover{background:var(--surf2)}
 
-  .path-box{background:var(--surf2);border:1px solid var(--border);border-radius:5px;padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--accent);word-break:break-all;margin-top:4px}
+  .path-box{background:var(--surf2);border:1px solid var(--border);border-radius:5px;padding:8px 12px;font-family:var(--mono);font-size:15px;color:#0057b8;font-weight:700;word-break:break-all;margin-top:4px}
 
   .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
   .dot-green{background:var(--accent);box-shadow:0 0 6px rgba(0,255,163,0.6);animation:pulse 2s infinite}
@@ -82,7 +83,6 @@
 </style>
 </head>
 <body>
-
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
   <h1>📁 EDI Folder Watcher</h1>
   <div style="display:flex;gap:10px">
@@ -91,9 +91,26 @@
       <span id="scan-spinner" class="spinner"></span>
       ▶ Scan Inbox Now
     </button>
+    <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
   </div>
 </div>
-<div class="sub">Background service · polls inbox every <span id="poll-interval">—</span>s · auto-processes 837P/I/D, TA1, 999</div>
+<script>
+  function setTheme(theme) {
+    document.body.classList.remove('theme-light', 'theme-dark');
+    document.body.classList.add(theme);
+    localStorage.setItem('edi-theme', theme);
+  }
+  function toggleTheme() {
+    const current = document.body.classList.contains('theme-light') ? 'theme-light' : 'theme-dark';
+    setTheme(current === 'theme-light' ? 'theme-dark' : 'theme-light');
+  }
+  // On load, set theme from localStorage or default to light
+  (function() {
+    const saved = localStorage.getItem('edi-theme');
+    setTheme(saved === 'theme-dark' ? 'theme-dark' : 'theme-light');
+  })();
+</script>
+<div class="sub">Background service · polls inbox every <span id="poll-interval">—</span>s · auto-processes 837P/I/D, TA1, 999, 277CA</div>
 
 <!-- KPI row -->
 <div class="grid grid-4" style="margin-bottom:16px" id="kpi-row">
@@ -378,7 +395,7 @@ function statusBadge(s) {
   return `<span class="badge ${map[s]||'b-pend'}">${s}</span>`;
 }
 function typeBadge(t) {
-  const map={'837P':'b-ok','837I':'b-skip','837D':'b-pend',TA1:'b-pend','999':'b-skip'};
+  const map={'837P':'b-ok','837I':'b-skip','837D':'b-pend',TA1:'b-pend','999':'b-skip','277CA':'b-ok'};
   return `<span class="badge ${map[t]||'b-ok'}">${t}</span>`;
 }
 function partnerName(id) {
