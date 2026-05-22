@@ -14,6 +14,7 @@ public class Edi837ParserTests
                   "NM1*82*1*PROV*JOHN****XX*12345~" +
                   "NM1*PR*2*PAYERORG*****PI*PAY1~" +
                   "CLM*CLM123*150.50***11:B:1*Y*A*Y*I~" +
+                  "NM1*QC*1*DOE*JANE~" +
                   "DTP*472*D8*20240115~" +
                   "LX*1~" +
                   "SV1*HC:99213:25*100.00*UN*2***1~";
@@ -37,7 +38,7 @@ public class Edi837ParserTests
         Assert.Equal(new DateTime(2024, 1, 15), claim.ServiceDateFrom);
 
         Assert.Single(claim.ServiceLines);
-        var line = claim.ServiceLines[0];
+        var line = claim.ServiceLines.First();
         Assert.Equal("99213", line.ProcedureCode);
         Assert.Equal("25", line.Modifier);
         Assert.Equal(100.00m, line.ChargedAmount);
@@ -68,9 +69,10 @@ public class Edi837ParserTests
         Assert.Equal(new DateTime(2024, 2, 1), claim.ServiceDateFrom);
         Assert.Equal(new DateTime(2024, 2, 3), claim.ServiceDateTo);
         Assert.Single(claim.ServiceLines);
-        Assert.Equal("REV001", claim.ServiceLines[0].ProcedureCode);
-        Assert.Equal(0m, claim.ServiceLines[0].ChargedAmount);
-        Assert.Equal(1, claim.ServiceLines[0].Units);
+        var line = claim.ServiceLines.First();
+        Assert.Equal("REV001", line.ProcedureCode);
+        Assert.Equal(0m, line.ChargedAmount);
+        Assert.Equal(1, line.Units);
     }
 
     [Fact]

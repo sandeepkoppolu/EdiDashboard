@@ -44,7 +44,7 @@ public class Edi999ParserTests
                   "AK1*HC*000000001~" +
                   "AK2*837*0001~" +
                   "IK3*CLM*2*8~" +
-                  "IK4*1*1250*1*7~" +
+                  "IK4*1*1250*7~" +
                   "AK5*R*5~" +
                   "AK9*R*1*1*0~";
 
@@ -116,8 +116,12 @@ public class Edi277CaParserTests
     public void Parse_277Ca_UnknownCategoryAndMultiplePtLoops_AreHandled()
     {
         var parser = new Edi277CaParser();
-        var raw = "HL*1**PT*1~NM1*IL*1*SMITH*JOHN~TRN*1*IGNORED~STC*ZZ:42:PR*BADDATE~" +
-                  "HL*2*1*PT*0~REF*1K*CLM2~STC*P1:20:PR*20240501~";
+        var raw = "ISA*00*          *00*          *ZZ*SENDERID       *ZZ*RECEIVERID     *240101*1230*^*00501*000000910*0*T*:~" +
+                  "ST*277*0002~" +
+                  "HL*1**20*1~" +
+                  "NM1*85*2*BILLPROV*****XX*2222222222~" +
+                  "HL*2*1*PT*1~NM1*IL*1*SMITH*JOHN~TRN*1*IGNORED~STC*ZZ:42:PR*BADDATE~" +
+                  "HL*3*1*PT*0~REF*1K*CLM2~STC*P1:20:PR*20240501~";
 
         var (_, statuses) = parser.Parse(raw, 5);
 
