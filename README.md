@@ -1,6 +1,6 @@
-# EDI Processor — 837 · TA1 · 999 · 277CA · Multi-Partner Healthcare Claims Operations Platform
+# EDI Dashboard — 837 · TA1 · 999 · 277CA · Multi-Partner Healthcare Claims Operations Platform
 
-EDI Processor is a full-stack **ASP.NET Core 8** application for healthcare X12 claim workflows. It ingests, parses, stores, reconciles, and surfaces operational insight for EDI transactions across multiple trading partners.
+EDI Dashboard is a full-stack **ASP.NET Core 8** application for healthcare X12 claim workflows. It ingests, parses, stores, reconciles, and surfaces operational insight for EDI transactions across multiple trading partners.
 
 It supports API-based uploads, watched-folder ingestion, acknowledgment reconciliation, operational dashboards, and REST APIs so integration teams, claims analysts, and support users can track file- and claim-level outcomes end to end.
 
