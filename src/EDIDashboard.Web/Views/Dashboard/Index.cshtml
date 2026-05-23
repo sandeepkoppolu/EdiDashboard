@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EDI Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/deloitte-colors.css" />
+<link rel="stylesheet" href="/css/toggle-theme.css" />
+<style>
+
+  :root {
+    --bg: var(--bg, #ffffff);
+    --surface: var(--surf, #f5f5f5);
+    --surface2: #eaeaea;
+    --border: #e0e0e0;
+    --accent: var(--primary, #86BC25);
+    --accent2: #0088ff;
+    --warn: #ff6b35;
+    --danger: #ff3860;
+    --text: var(--text, #000000);
+    --muted: var(--muted, #666666);
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 240px;
+    min-height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+  }
+
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo .logo-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .sidebar-logo h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  .sidebar-nav { padding: 16px 0; flex: 1; }
+  .nav-section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 8px 20px 4px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent); background: rgba(0,229,160,0.06); border-left-color: var(--accent); }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  /* ── Main ── */
+  .main {
+    margin-left: 240px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .topbar-title { font-size: 15px; font-weight: 600; }
+  .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    font-family: var(--sans);
+  }
+  .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-primary:hover { background: #00c98c; }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--surface2); border-color: #2a3650; }
+  .btn-danger { background: rgba(255,56,96,0.1); color: var(--danger); border-color: rgba(255,56,96,0.3); }
+
+  .content { padding: 28px; flex: 1; }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .filter-select, .filter-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--sans);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .filter-select:focus, .filter-input:focus { border-color: var(--accent); }
+
+  /* ── KPI Cards ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .kpi-card:hover { border-color: #2a3650; }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--kpi-color, var(--accent));
+  }
+
+  .kpi-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .kpi-value {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--kpi-color, var(--text));
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .kpi-sub {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .kpi-icon {
+    position: absolute;
+    top: 16px; right: 16px;
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--kpi-color, var(--muted));
+  }
+
+  /* ── Chart area ── */
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .panel-body { padding: 20px; }
+
+  /* bar chart */
+  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
+  .bar-group { flex: 1; display: flex; gap: 1px; align-items: flex-end; }
+  .bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    transition: opacity 0.2s;
+    position: relative;
+  }
+  .bar:hover { opacity: 0.8; }
+  .bar-total { background: var(--accent2); }
+  .bar-accepted { background: var(--accent); }
+  .bar-rejected { background: var(--danger); }
+  .chart-labels {
+    display: flex; gap: 3px; margin-top: 6px;
+    font-family: var(--mono); font-size: 9px; color: var(--muted); overflow: hidden;
+  }
+  .chart-label { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
+
+  /* donut */
+  .donut-wrap { display: flex; align-items: center; gap: 20px; }
+  .donut-svg { flex-shrink: 0; }
+  .donut-legend { display: flex; flex-direction: column; gap: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-count { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .legend-label { color: var(--muted); font-size: 12px; }
+
+  /* ── Partner table ── */
+  .partner-grid { margin-bottom: 24px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.1s; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody td { padding: 12px 16px; color: var(--text); vertical-align: middle; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 4px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-accepted { background: rgba(0,229,160,0.12); color: var(--accent); }
+  .badge-rejected { background: rgba(255,56,96,0.12); color: var(--danger); }
+  .badge-received  { background: rgba(0,136,255,0.12); color: var(--accent2); }
+  .badge-ta1  { background: rgba(255,107,53,0.12); color: var(--warn); }
+  .badge-999  { background: rgba(160,100,255,0.12); color: #a064ff; }
+  .badge-277ca{ background: rgba(255,140,0,0.12); color: #ff8c00; }
+  .badge-auto-created { background: rgba(0,136,255,0.12); color: #0077cc; }
+  .badge-837p { background: rgba(0,229,160,0.12); color: var(--accent); }
+  .badge-837i { background: rgba(0,136,255,0.12); color: var(--accent2); }
+  .badge-837d { background: rgba(255,200,0,0.12); color: #ffc800; }
+
+  .progress-bar-wrap {
+    background: rgba(255,255,255,0.05);
+    border-radius: 3px;
+    height: 6px;
+    width: 80px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .progress-bar-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+
+  /* ── Upload modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    display: none; align-items: center; justify-content: center;
+    z-index: 200;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 480px;
+    max-width: 95vw;
+    padding: 28px;
+    position: relative;
+    animation: slideUp 0.2s ease;
+  }
+  @@keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: none; border: none; cursor: pointer; color: var(--muted); font-size: 20px;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal h2 { font-size: 18px; margin-bottom: 6px; }
+  .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: var(--mono); letter-spacing: 0.5px; }
+  .form-control {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: var(--sans);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-control:focus { border-color: var(--accent); }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(0,229,160,0.04); }
+  .drop-zone svg { color: var(--muted); margin-bottom: 10px; }
+  .drop-zone p { font-size: 13px; color: var(--muted); }
+  .drop-zone strong { color: var(--accent); }
+  .drop-zone input { display: none; }
+
+  .file-selected {
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    background: rgba(0,229,160,0.08); border: 1px solid rgba(0,229,160,0.2);
+    border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;
+    display: none;
+  }
+
+  .result-box {
+    border-radius: 6px; padding: 12px 14px;
+    font-size: 13px; margin-top: 12px; display: none;
+  }
+  .result-box.success { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.2); color: var(--accent); }
+  .result-box.error   { background: rgba(255,56,96,0.1);  border: 1px solid rgba(255,56,96,0.2);  color: var(--danger); }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab {
+    padding: 10px 20px; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--muted); border-bottom: 2px solid transparent;
+    transition: all 0.15s; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex; align-items: center; gap: 8px;
+    padding: 16px 20px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--muted);
+  }
+  .page-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 5px 10px; border-radius: 4px;
+    cursor: pointer; font-size: 12px;
+  }
+  .page-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── Toast ── */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+    min-width: 280px;
+    animation: toastIn 0.25s ease;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  @@keyframes toastIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }
+  .toast.success { border-left: 3px solid var(--accent); }
+  .toast.error   { border-left: 3px solid var(--danger); }
+
+  /* ── Loading ── */
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,229,160,0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @@keyframes spin { to { transform: rotate(360deg); } }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s infinite;
+    border-radius: 4px;
+    height: 14px;
+  }
+  @@keyframes shimmer { to { background-position: -200% 0; } }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--muted);
+  }
+  .empty-state svg { margin: 0 auto 12px; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  @@media (max-width: 900px) {
+    .sidebar { display: none; }
+    .main { margin-left: 0; }
+    .charts-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-badge">EDI</div>
+    <h1>Command Center</h1>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Overview</div>
+    <div class="nav-item active" onclick="showSection('dashboard', this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-section-label">EDI Data</div>
+    <div class="nav-item" onclick="showSection('transactions', this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Transactions
+    </div>
+    <div class="nav-item" onclick="showSection('claims', this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      Claims
+    </div>
+    <div class="nav-item" onclick="showSection('acks', this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Acknowledgments
+    </div>
+    <div class="nav-section-label">Config</div>
+    <div class="nav-item" onclick="showSection('partners', this)">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Trading Partners
+    </div>
+    <a href="/WatcherView" style="text-decoration:none">
+      <div class="nav-item">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+        Folder Watcher
+      </div>
+    </a>
+  </nav>
+  <div class="sidebar-footer">EDI Processor v1.0</div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <span class="topbar-title" id="page-title">Dashboard</span>
+    <div class="topbar-actions">
+      <select class="filter-select" id="global-partner" onchange="globalFilter()">
+        <option value="">All Partners</option>
+      </select>
+      <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
+      <button class="btn btn-primary" onclick="document.getElementById('upload-modal').classList.add('open')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Upload EDI
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ══ DASHBOARD ══ -->
+    <section id="section-dashboard">
+      <div class="filter-bar">
+        <select class="filter-select" id="dash-range" onchange="loadDashboard()">
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last 12 months</option>
+        </select>
+      </div>
+
+      <div class="kpi-grid" id="kpi-grid">
+        <div class="kpi-card" style="--kpi-color:#00e5a0">
+          <div class="kpi-label">Total Claims</div>
+          <div class="kpi-value" id="kpi-total">—</div>
+          <div class="kpi-sub" id="kpi-total-sub">Loading…</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#00e5a0">
+          <div class="kpi-label">Accepted</div>
+          <div class="kpi-value" id="kpi-accepted">—</div>
+          <div class="kpi-sub" id="kpi-accepted-rate">—</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg></div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#ff3860">
+          <div class="kpi-label">Rejected</div>
+          <div class="kpi-value" id="kpi-rejected">—</div>
+          <div class="kpi-sub" id="kpi-rejected-rate">—</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#0088ff">
+          <div class="kpi-label">Pending Review</div>
+          <div class="kpi-value" id="kpi-pending">—</div>
+          <div class="kpi-sub">Awaiting acknowledgment</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#ffc800">
+          <div class="kpi-label">Total Billed</div>
+          <div class="kpi-value" id="kpi-amount" style="font-size:20px">—</div>
+          <div class="kpi-sub">Charged amount</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+        </div>
+        <div class="kpi-card" style="--kpi-color:#a064ff">
+          <div class="kpi-label">Transactions</div>
+          <div class="kpi-value" id="kpi-txns">—</div>
+          <div class="kpi-sub">837, TA1, 999, 277CA</div>
+          <div class="kpi-icon"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg></div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Daily Volume</span>
+            <div style="display:flex;gap:12px;font-size:11px;">
+              <span style="color:var(--accent2)">■ Total</span>
+              <span style="color:var(--accent)">■ Accepted</span>
+              <span style="color:var(--danger)">■ Rejected</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="bar-chart" id="bar-chart"></div>
+            <div class="chart-labels" id="chart-labels"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">By Claim Type</span></div>
+          <div class="panel-body">
+            <div class="donut-wrap">
+              <svg class="donut-svg" width="120" height="120" viewBox="0 0 120 120" id="donut-svg">
+                <circle cx="60" cy="60" r="45" fill="none" stroke="var(--border)" stroke-width="18"/>
+              </svg>
+              <div class="donut-legend" id="donut-legend"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Partner breakdown -->
+      <div class="panel partner-grid">
+        <div class="panel-header"><span class="panel-title">Trading Partner Breakdown</span></div>
+        <table>
+          <thead><tr>
+            <th>Partner</th><th>Total</th><th>Accepted</th><th>Rejected</th><th>Pending</th><th>Billed</th><th>Accept Rate</th>
+          </tr></thead>
+          <tbody id="partner-tbody">
+            <tr><td colspan="7" class="empty-state"><p>Loading…</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recent -->
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Recent Transactions</span></div>
+        <table>
+          <thead><tr><th>Type</th><th>Control #</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
+          <tbody id="recent-tbody">
+            <tr><td colspan="6" class="empty-state"><p>Loading…</p></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══ TRANSACTIONS ══ -->
+    <section id="section-transactions" style="display:none">
+      <div class="filter-bar">
+        <select class="filter-select" id="tx-type" onchange="loadTransactions()">
+          <option value="">All Types</option>
+          <option value="837P">837P</option>
+          <option value="837I">837I</option>
+          <option value="837D">837D</option>
+          <option value="TA1">TA1</option>
+          <option value="999">999</option>
+          <option value="277CA">277CA</option>
+        </select>
+        <button class="btn btn-secondary" onclick="loadTransactions()">Refresh</button>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">All Transactions</span><span id="tx-count" style="font-size:12px;color:var(--muted)"></span></div>
+        <table>
+          <thead><tr><th>ID</th><th>Type</th><th>Control #</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
+          <tbody id="tx-tbody"><tr><td colspan="7"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+        <div class="pagination" id="tx-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ══ CLAIMS ══ -->
+    <section id="section-claims" style="display:none">
+      <div class="filter-bar">
+        <select class="filter-select" id="claim-status" onchange="loadClaims()">
+          <option value="">All Statuses</option>
+          <option value="Received">Received</option>
+          <option value="Accepted">Accepted</option>
+          <option value="Rejected">Rejected</option>
+        </select>
+        <input class="filter-input" type="date" id="claim-from" onchange="loadClaims()" placeholder="From" />
+        <input class="filter-input" type="date" id="claim-to" onchange="loadClaims()" placeholder="To" />
+        <button class="btn btn-secondary" onclick="loadClaims()">Refresh</button>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Claims</span><span id="claim-count" style="font-size:12px;color:var(--muted)"></span></div>
+        <table>
+          <thead><tr><th>Claim #</th><th>Patient</th><th>Provider</th><th>Payer</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody id="claim-tbody"><tr><td colspan="8"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+        <div class="pagination" id="claim-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ══ ACKNOWLEDGMENTS ══ -->
+    <section id="section-acks" style="display:none">
+      <div class="filter-bar">
+        <select class="filter-select" id="ack-type" onchange="loadAcks()">
+          <option value="">TA1 + 999</option>
+          <option value="TA1">TA1 Only</option>
+          <option value="999">999 Only</option>
+        </select>
+        <button class="btn btn-secondary" onclick="loadAcks()">Refresh</button>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Acknowledgments</span></div>
+        <table>
+          <thead><tr><th>Type</th><th>Control #</th><th>Partner</th><th>Code</th><th>Description</th><th>Received</th></tr></thead>
+          <tbody id="ack-tbody"><tr><td colspan="6"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+        <div class="pagination" id="ack-pagination"></div>
+      </div>
+    </section>
+
+    <!-- ══ TRADING PARTNERS ══ -->
+    <section id="section-partners" style="display:none">
+      <div class="filter-bar">
+        <button class="btn btn-primary" onclick="openPartnerModal()">+ Add Partner</button>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Trading Partners</span></div>
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Interchange ID</th><th>Qualifier</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="partners-tbody"><tr><td colspan="6"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- ══ UPLOAD MODAL ══ -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('upload-modal').classList.remove('open')">✕</button>
+    <h2>Upload EDI Files</h2>
+    <p class="modal-sub">Supports 837P/I/D, TA1, 999, and 277CA transactions</p>
+
+    <div class="form-group">
+      <label class="form-label">Trading Partner</label>
+      <select class="form-control" id="upload-partner">
+        <option value="">Auto-detect from ISA06 (create if new)</option>
+      </select>
+    </div>
+
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <input type="file" id="file-input" accept=".edi,.txt,.x12,.837,.999,.ta1,.277" multiple onchange="fileSelected(this)" />
+      <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+      <p>Drop EDI files here or <strong>click to browse</strong></p>
+      <p style="margin-top:4px;font-size:11px;">.edi .txt .x12 .837 .999 .ta1 .277</p>
+    </div>
+    <div class="file-selected" id="file-selected-name"></div>
+    <div id="upload-result" class="result-box"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px;">
+      <button class="btn btn-secondary" onclick="document.getElementById('upload-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" id="upload-btn" onclick="uploadFile()">
+        <span id="upload-spinner" class="spinner" style="display:none"></span>
+        Upload & Process Files
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PARTNER MODAL ══ -->
+<div class="modal-overlay" id="partner-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('partner-modal').classList.remove('open')">✕</button>
+    <h2 id="partner-modal-title">Add Trading Partner</h2>
+    <p class="modal-sub">Configure a new EDI trading partner</p>
+    <input type="hidden" id="partner-id" value="" />
+    <div class="form-group">
+      <label class="form-label">Partner Name</label>
+      <input class="form-control" id="partner-name" placeholder="e.g. Blue Cross Blue Shield" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Interchange ID (ISA06)</label>
+      <input class="form-control" id="partner-interchange-id" placeholder="e.g. BCBS001" style="font-family:var(--mono)" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Interchange Qualifier (ISA05)</label>
+      <select class="form-control" id="partner-qualifier">
+        <option value="ZZ">ZZ – Mutually Defined</option>
+        <option value="01">01 – Duns</option>
+        <option value="30">30 – U.S. Federal Tax ID</option>
+        <option value="NI">NI – National Association of Insurance Commissioners</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Status</label>
+      <select class="form-control" id="partner-active">
+        <option value="true">Active</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-secondary" onclick="document.getElementById('partner-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePartner()">Save Partner</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toasts"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let partners = [];
+let selectedPartnerId = null;
+let txPage = 1, claimPage = 1, ackPage = 1;
+const PAGE_SIZE = 25;
+
+function setTheme(theme) {
+  document.body.classList.remove('theme-light', 'theme-dark');
+  document.body.classList.add(theme);
+  localStorage.setItem('edi-theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.body.classList.contains('theme-light') ? 'theme-light' : 'theme-dark';
+  setTheme(current === 'theme-light' ? 'theme-dark' : 'theme-light');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const saved = localStorage.getItem('edi-theme');
+  setTheme(saved === 'theme-dark' ? 'theme-dark' : 'theme-light');
+  try {
+    await loadPartners();
+  } catch (e) {
+    console.error('Failed to auto-load trading partners:', e);
+  }
+  loadDashboard();
+  setupDropZone();
+})();
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function showSection(name, navEl) {
+  document.querySelectorAll('[id^="section-"]').forEach(s => s.style.display = 'none');
+  document.getElementById('section-' + name).style.display = '';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (navEl) navEl.classList.add('active');
+  document.getElementById('page-title').textContent =
+    {dashboard:'Dashboard', transactions:'Transactions', claims:'Claims', acks:'Acknowledgments', partners:'Trading Partners'}[name] || name;
+
+  if (name === 'transactions') loadTransactions();
+  if (name === 'claims')       loadClaims();
+  if (name === 'acks')         loadAcks();
+  if (name === 'partners')     renderPartnersTable();
+}
+
+function globalFilter() {
+  selectedPartnerId = document.getElementById('global-partner').value || null;
+  txPage = 1;
+  claimPage = 1;
+  ackPage = 1;
+
+  if (document.getElementById('section-transactions').style.display !== 'none') {
+    loadTransactions();
+    return;
+  }
+
+  if (document.getElementById('section-claims').style.display !== 'none') {
+    loadClaims();
+    return;
+  }
+
+  if (document.getElementById('section-acks').style.display !== 'none') {
+    loadAcks();
+    return;
+  }
+
+  loadDashboard();
+}
+
+// ─── Partners ─────────────────────────────────────────────────────────────────
+async function loadPartners() {
+  const partnerUrls = ['/api/tradingpartners', '/api/TradingPartners'];
+  let loaded = null;
+
+  for (const url of partnerUrls) {
+    try {
+      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        loaded = data;
+        break;
+      }
+    } catch (e) {
+      console.warn('Partner endpoint failed:', url, e);
+    }
+  }
+
+  partners = Array.isArray(loaded) ? loaded : [];
+  const opts = partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+  const globalEl = document.getElementById('global-partner');
+  const uploadEl = document.getElementById('upload-partner');
+  const currentGlobal = globalEl.value;
+  const currentUpload = uploadEl.value;
+
+  globalEl.innerHTML = '<option value="">All Partners</option>' + opts;
+  uploadEl.innerHTML = '<option value="">Auto-detect from ISA06 (create if new)</option>' + opts;
+
+  if (currentGlobal && partners.some(p => String(p.id) === currentGlobal)) {
+    globalEl.value = currentGlobal;
+  }
+  if (currentUpload && partners.some(p => String(p.id) === currentUpload)) {
+    uploadEl.value = currentUpload;
+  }
+}
+
+function renderPartnersTable() {
+  const tbody = document.getElementById('partners-tbody');
+  if (!partners.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No trading partners yet.</p></div></td></tr>'; return; }
+  tbody.innerHTML = partners.map(p => `
+    <tr>
+      <td style="font-family:var(--mono);color:var(--muted)">${p.id}</td>
+      <td><strong>${p.name}</strong>${p.name && p.name.startsWith('Auto-') ? ' <span class="badge badge-auto-created" style="font-size:9px;margin-left:6px">Auto-Created</span>' : ''}</td>
+      <td style="font-family:var(--mono)">${p.interchangeId || '—'}</td>
+      <td style="font-family:var(--mono)">${p.interchangeQualifier || '—'}</td>
+      <td><span class="badge ${p.isActive ? 'badge-accepted' : 'badge-rejected'}">${p.isActive ? 'Active' : 'Inactive'}</span></td>
+      <td>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick='editPartner(${JSON.stringify(p)})'>Edit</button>
+        <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;margin-left:6px" onclick="deletePartner(${p.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openPartnerModal() {
+  document.getElementById('partner-id').value = '';
+  document.getElementById('partner-name').value = '';
+  document.getElementById('partner-interchange-id').value = '';
+  document.getElementById('partner-qualifier').value = 'ZZ';
+  document.getElementById('partner-active').value = 'true';
+  document.getElementById('partner-modal-title').textContent = 'Add Trading Partner';
+  document.getElementById('partner-modal').classList.add('open');
+}
+
+function editPartner(p) {
+  document.getElementById('partner-id').value = p.id;
+  document.getElementById('partner-name').value = p.name;
+  document.getElementById('partner-interchange-id').value = p.interchangeId;
+  document.getElementById('partner-qualifier').value = p.interchangeQualifier || 'ZZ';
+  document.getElementById('partner-active').value = p.isActive ? 'true' : 'false';
+  document.getElementById('partner-modal-title').textContent = 'Edit Trading Partner';
+  document.getElementById('partner-modal').classList.add('open');
+}
+
+async function savePartner() {
+  const id = document.getElementById('partner-id').value;
+  const body = {
+    id: id ? parseInt(id) : 0,
+    name: document.getElementById('partner-name').value,
+    interchangeId: document.getElementById('partner-interchange-id').value,
+    interchangeQualifier: document.getElementById('partner-qualifier').value,
+    isActive: document.getElementById('partner-active').value === 'true'
+  };
+  const url = id ? `/api/tradingpartners/${id}` : '/api/tradingpartners';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (res.ok) {
+    document.getElementById('partner-modal').classList.remove('open');
+    await loadPartners();
+    renderPartnersTable();
+    toast('Partner saved successfully', 'success');
+  } else {
+    toast('Failed to save partner', 'error');
+  }
+}
+
+async function deletePartner(id) {
+  if (!confirm('Delete this trading partner?')) return;
+  await fetch(`/api/tradingpartners/${id}`, { method: 'DELETE' });
+  await loadPartners();
+  renderPartnersTable();
+  toast('Partner deleted', 'success');
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const days = parseInt(document.getElementById('dash-range').value);
+  const from = new Date(); from.setDate(from.getDate() - days);
+  const params = new URLSearchParams({ from: from.toISOString() });
+  if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
+
+  const res = await fetch('/api/metrics?' + params);
+  const d = await res.json();
+
+  document.getElementById('kpi-total').textContent = fmt(d.totalClaims);
+  document.getElementById('kpi-total-sub').textContent = `${d.totalTransactions} transactions`;
+  document.getElementById('kpi-accepted').textContent = fmt(d.acceptedClaims);
+  document.getElementById('kpi-accepted-rate').textContent = d.totalClaims ? pct(d.acceptedClaims / d.totalClaims) + ' acceptance rate' : '—';
+  document.getElementById('kpi-rejected').textContent = fmt(d.rejectedClaims);
+  document.getElementById('kpi-rejected-rate').textContent = d.totalClaims ? pct(d.rejectedClaims / d.totalClaims) + ' rejection rate' : '—';
+  document.getElementById('kpi-pending').textContent = fmt(d.pendingClaims);
+  document.getElementById('kpi-amount').textContent = '$' + money(d.totalBilledAmount);
+  document.getElementById('kpi-txns').textContent = fmt(d.totalTransactions);
+
+  renderBarChart(d.dailyVolumes);
+  renderDonut(d.byClaimType);
+  renderPartnerTable(d.byTradingPartner);
+  renderRecentTable(d.recentTransactions);
+}
+
+function renderBarChart(volumes) {
+  if (!volumes || !volumes.length) {
+    document.getElementById('bar-chart').innerHTML = '<div class="empty-state" style="width:100%"><p>No volume data</p></div>';
+    return;
+  }
+  const maxClaims = Math.max(...volumes.map(v => v.claims), 1);
+  const barChart = document.getElementById('bar-chart');
+  const labels = document.getElementById('chart-labels');
+  const showEvery = Math.ceil(volumes.length / 10);
+
+  barChart.innerHTML = volumes.map(v => `
+    <div class="bar-group" title="${v.date?.split('T')[0]}: ${v.claims} total, ${v.accepted} accepted, ${v.rejected} rejected">
+      <div class="bar bar-total" style="height:${(v.claims/maxClaims*100)}%"></div>
+      <div class="bar bar-accepted" style="height:${(v.accepted/maxClaims*100)}%"></div>
+      <div class="bar bar-rejected" style="height:${(v.rejected/maxClaims*100)}%"></div>
+    </div>
+  `).join('');
+
+  labels.innerHTML = volumes.map((v, i) => {
+    const d = v.date ? new Date(v.date) : null;
+    const label = d ? `${d.getMonth()+1}/${d.getDate()}` : '';
+    return `<div class="chart-label">${i % showEvery === 0 ? label : ''}</div>`;
+  }).join('');
+}
+
+function renderDonut(byType) {
+  const svg = document.getElementById('donut-svg');
+  const legend = document.getElementById('donut-legend');
+  if (!byType || !byType.length) {
+    legend.innerHTML = '<div style="color:var(--muted);font-size:13px">No data</div>';
+    return;
+  }
+  const colors = ['#00e5a0','#0088ff','#ffc800','#ff3860','#a064ff'];
+  const total = byType.reduce((s, t) => s + t.count, 0) || 1;
+  const r = 45, cx = 60, cy = 60, circ = 2 * Math.PI * r;
+  let offset = 0;
+  const circles = byType.map((t, i) => {
+    const dash = (t.count / total) * circ;
+    const gap = circ - dash;
+    const c = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[i % colors.length]}"
+      stroke-width="18" stroke-dasharray="${dash} ${gap}"
+      stroke-dashoffset="${-offset}" transform="rotate(-90 60 60)" />`;
+    offset += dash;
+    return c;
+  }).join('');
+
+  svg.innerHTML = `<circle cx="60" cy="60" r="45" fill="none" stroke="var(--border)" stroke-width="18"/>` + circles;
+
+  legend.innerHTML = byType.map((t, i) => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${colors[i%colors.length]}"></div>
+      <div>
+        <div class="legend-count" style="color:${colors[i%colors.length]}">${fmt(t.count)}</div>
+        <div class="legend-label">${t.claimType}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPartnerTable(partners) {
+  const tbody = document.getElementById('partner-tbody');
+  if (!partners || !partners.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No claims in range</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = partners.map(p => `
+    <tr>
+      <td><strong>${p.tradingPartnerName}</strong></td>
+      <td style="font-family:var(--mono)">${fmt(p.totalClaims)}</td>
+      <td style="color:var(--accent);font-family:var(--mono)">${fmt(p.accepted)}</td>
+      <td style="color:var(--danger);font-family:var(--mono)">${fmt(p.rejected)}</td>
+      <td style="color:var(--accent2);font-family:var(--mono)">${fmt(p.pending)}</td>
+      <td>$${money(p.totalAmount)}</td>
+      <td>
+        <span style="font-family:var(--mono);font-size:13px">${p.acceptanceRate}%</span>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${p.acceptanceRate}%"></div></div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderRecentTable(txns) {
+  const tbody = document.getElementById('recent-tbody');
+  if (!txns || !txns.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No transactions yet. Upload an EDI file to get started.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = txns.map(t => `
+    <tr>
+      <td>${typeBadge(t.transactionType)}</td>
+      <td style="font-family:var(--mono);font-size:12px">${t.controlNumber || '—'}</td>
+      <td>${t.tradingPartner}</td>
+      <td style="font-family:var(--mono)">${t.claimCount}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${relativeTime(t.receivedAt)}</td>
+    </tr>
+  `).join('');
+}
+
+// ─── Transactions table ───────────────────────────────────────────────────────
+async function loadTransactions() {
+  const type = document.getElementById('tx-type').value;
+  const params = new URLSearchParams({ page: txPage, pageSize: PAGE_SIZE });
+  if (type) params.set('type', type);
+  if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
+
+  const res = await fetch('/api/transactions?' + params);
+  const data = await res.json();
+
+  document.getElementById('tx-count').textContent = `${data.total} total`;
+
+  const tbody = document.getElementById('tx-tbody');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No transactions found.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.items.map(t => `
+    <tr>
+      <td style="font-family:var(--mono);color:var(--muted);font-size:11px">${t.id}</td>
+      <td>${typeBadge(t.transactionType)}</td>
+      <td style="font-family:var(--mono);font-size:12px">${t.controlNumber || '—'}</td>
+      <td>${t.tradingPartner}</td>
+      <td style="font-family:var(--mono)">${t.claimCount}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${relativeTime(t.receivedAt)}</td>
+    </tr>
+  `).join('');
+
+  renderPagination('tx-pagination', data.total, txPage, PAGE_SIZE, p => { txPage = p; loadTransactions(); });
+}
+
+// ─── Claims table ─────────────────────────────────────────────────────────────
+async function loadClaims() {
+  const status = document.getElementById('claim-status').value;
+  const from = document.getElementById('claim-from').value;
+  const to = document.getElementById('claim-to').value;
+  const params = new URLSearchParams({ page: claimPage, pageSize: PAGE_SIZE });
+  if (status) params.set('status', status);
+  if (from) params.set('from', new Date(from).toISOString());
+  if (to) params.set('to', new Date(to).toISOString());
+  if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
+
+  const res = await fetch('/api/claims?' + params);
+  const data = await res.json();
+  document.getElementById('claim-count').textContent = `${data.total} total`;
+
+  const tbody = document.getElementById('claim-tbody');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>No claims found.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.items.map(c => `
+    <tr>
+      <td style="font-family:var(--mono);font-size:12px">${c.claimNumber || '—'}</td>
+      <td>${c.patientName || '—'}</td>
+      <td style="font-size:12px">${c.providerName || '—'}</td>
+      <td style="font-size:12px">${c.payerName || '—'}</td>
+      <td>${claimTypeBadge(c.claimType)}</td>
+      <td style="font-family:var(--mono)">$${money(c.totalAmount)}</td>
+      <td>${statusBadge(c.status)}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${c.serviceDateFrom ? c.serviceDateFrom.split('T')[0] : '—'}</td>
+    </tr>
+  `).join('');
+
+  renderPagination('claim-pagination', data.total, claimPage, PAGE_SIZE, p => { claimPage = p; loadClaims(); });
+}
+
+// ─── Acknowledgments table ────────────────────────────────────────────────────
+async function loadAcks() {
+  const ackType = document.getElementById('ack-type').value;
+  const params = new URLSearchParams({ page: ackPage, pageSize: PAGE_SIZE });
+  if (ackType) params.set('ackType', ackType);
+  if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
+
+  const res = await fetch('/api/acknowledgments?' + params);
+  const data = await res.json();
+
+  const tbody = document.getElementById('ack-tbody');
+  if (!data.items.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No acknowledgments found.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.items.map(a => `
+    <tr>
+      <td>${typeBadge(a.ackType)}</td>
+      <td style="font-family:var(--mono);font-size:12px">${a.controlNumber || '—'}</td>
+      <td>${a.tradingPartner}</td>
+      <td><span class="badge ${a.acknowledgmentCode === 'A' ? 'badge-accepted' : a.acknowledgmentCode === 'R' ? 'badge-rejected' : 'badge-received'}">${a.acknowledgmentCode || '—'}</span></td>
+      <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.description || ''}">${a.description || '—'}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${relativeTime(a.receivedAt)}</td>
+    </tr>
+  `).join('');
+
+  renderPagination('ack-pagination', data.total, ackPage, PAGE_SIZE, p => { ackPage = p; loadAcks(); });
+}
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+let selectedFiles = [];
+
+function fileSelected(input) {
+  selectedFiles = Array.from(input.files || []);
+  renderSelectedFiles();
+}
+
+function renderSelectedFiles() {
+  const el = document.getElementById('file-selected-name');
+  if (!selectedFiles.length) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  const totalSizeKb = selectedFiles.reduce((sum, f) => sum + (f.size / 1024), 0);
+  const preview = selectedFiles.slice(0, 3).map(f => f.name).join(', ');
+  const suffix = selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : '';
+  el.style.display = 'block';
+  el.textContent = `📄 ${selectedFiles.length} file(s): ${preview}${suffix} (${totalSizeKb.toFixed(1)} KB)`;
+}
+
+function setupDropZone() {
+  const zone = document.getElementById('drop-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) {
+      selectedFiles = files;
+      renderSelectedFiles();
+    }
+  });
+}
+
+async function uploadFile() {
+  const partnerId = document.getElementById('upload-partner').value;
+  const resultEl = document.getElementById('upload-result');
+
+  if (!selectedFiles.length) { resultEl.className = 'result-box error'; resultEl.style.display = 'block'; resultEl.textContent = 'Please select at least one file to upload.'; return; }
+
+  document.getElementById('upload-spinner').style.display = 'inline-block';
+  document.getElementById('upload-btn').disabled = true;
+  resultEl.style.display = 'none';
+
+  const form = new FormData();
+  if (partnerId) form.append('tradingPartnerId', partnerId);
+  selectedFiles.forEach(file => form.append('files', file));
+
+  try {
+    const res = await fetch('/api/edi/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    resultEl.style.display = 'block';
+    if (res.ok) {
+      if (Array.isArray(data.results)) {
+        const failed = data.results.filter(r => !r.success);
+        resultEl.className = failed.length ? 'result-box error' : 'result-box success';
+        resultEl.textContent =
+          `Processed ${data.totalFiles} file(s): ${data.successCount} succeeded, ${data.failureCount} failed.` +
+          (failed.length ? ` Failed: ${failed.slice(0, 3).map(f => f.fileName).join(', ')}` : '');
+        toast(`Upload complete: ${data.successCount}/${data.totalFiles} succeeded`, failed.length ? 'error' : 'success');
+      } else {
+        resultEl.className = 'result-box success';
+        resultEl.textContent = `✓ ${data.message} (${data.transactionType}, Control: ${data.controlNumber}, Claims: ${data.claimsProcessed})`;
+        toast(data.message, 'success');
+      }
+      loadDashboard();
+    } else {
+      resultEl.className = 'result-box error';
+      resultEl.textContent = `✗ ${data.message || 'Upload failed'}` + (data.errors?.length ? ': ' + data.errors.join(', ') : '');
+    }
+  } catch (e) {
+    resultEl.className = 'result-box error';
+    resultEl.style.display = 'block';
+    resultEl.textContent = '✗ Network error: ' + e.message;
+  } finally {
+    document.getElementById('upload-spinner').style.display = 'none';
+    document.getElementById('upload-btn').disabled = false;
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function renderPagination(id, total, page, pageSize, onPage) {
+  const totalPages = Math.ceil(total / pageSize);
+  const el = document.getElementById(id);
+  el.innerHTML = `
+    <button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="(${onPage.toString()})(${page - 1})">← Prev</button>
+    <span>Page ${page} of ${totalPages} (${total} records)</span>
+    <button class="page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="(${onPage.toString()})(${page + 1})">Next →</button>
+  `;
+}
+
+function statusBadge(s) {
+  const map = { Accepted: 'badge-accepted', Rejected: 'badge-rejected', Received: 'badge-received' };
+  return `<span class="badge ${map[s] || 'badge-received'}">${s || '—'}</span>`;
+}
+
+function typeBadge(t) {
+  const map = { TA1: 'badge-ta1', '999': 'badge-999', '277CA': 'badge-277ca', '837P': 'badge-837p', '837I': 'badge-837i', '837D': 'badge-837d' };
+  return `<span class="badge ${map[t] || 'badge-received'}">${t || '—'}</span>`;
+}
+
+function claimTypeBadge(t) {
+  const map = { Professional: 'badge-837p', Institutional: 'badge-837i', Dental: 'badge-837d' };
+  return `<span class="badge ${map[t] || 'badge-received'}" style="font-size:10px">${t || '—'}</span>`;
+}
+
+function fmt(n) { return (n ?? 0).toLocaleString(); }
+function money(n) { return (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function pct(n) { return (n * 100).toFixed(1) + '%'; }
+
+function relativeTime(d) {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(d).toLocaleDateString();
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${type === 'success' ? '✓' : '✗'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+</script>
+</body>
+</html>

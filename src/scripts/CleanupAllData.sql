@@ -1,6 +1,6 @@
 /*
   CleanupAllData.sql
-  Purpose: Remove all application data from EdiProcessor database while keeping schema and migrations.
+  Purpose: Remove all application data from EDIDashboard database while keeping schema and migrations.
   Target: SQL Server
 
   Notes:
@@ -15,7 +15,7 @@ SET XACT_ABORT ON;
 BEGIN TRY
     BEGIN TRANSACTION;
 
-    PRINT 'Starting EdiProcessor data cleanup...';
+    PRINT 'Starting EDIDashboard data cleanup...';
 
     /* Child/dependent tables first */
     DELETE FROM [ServiceLines];
