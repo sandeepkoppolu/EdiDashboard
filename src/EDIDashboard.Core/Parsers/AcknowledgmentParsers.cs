@@ -185,16 +185,25 @@ public class Edi999Parser
                         errors.Add($"Element error: {(el.Length > 3 ? Get999ErrorCode(el[3]) : "")}");
                     break;
 
+                case "IK5":
                 case "AK5":
-                    // AK5*A or AK5*R*xxx – transaction set ack
-                    if (currentAck != null)
+                    // IK5/AK5*A or *R*xxx – transaction set acknowledgment
+                    if (currentAck == null)
                     {
-                        currentAck.AcknowledgmentCode = el.Length > 1 ? el[1].Trim() : "";
-                        currentAck.ErrorCode = el.Length > 2 ? el[2].Trim() : null;
-                        currentAck.Description = BuildAk5Description(currentAck.AcknowledgmentCode, errors);
-                        acks.Add(currentAck);
-                        currentAck = null;
+                        // Some partner files omit AK1/AK2 details; still emit a 999 acknowledgment row.
+                        currentAck = new AcknowledgmentRecord
+                        {
+                            AckType = "999",
+                            ReceivedAt = DateTime.UtcNow,
+                            ControlNumber = transaction.ControlNumber
+                        };
                     }
+
+                    currentAck.AcknowledgmentCode = el.Length > 1 ? el[1].Trim() : "";
+                    currentAck.ErrorCode = el.Length > 2 ? el[2].Trim() : null;
+                    currentAck.Description = BuildAk5Description(currentAck.AcknowledgmentCode, errors);
+                    acks.Add(currentAck);
+                    currentAck = null;
                     break;
 
                 case "AK9":

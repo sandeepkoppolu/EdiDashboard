@@ -4,6 +4,7 @@ using EDIDashboard.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EDIDashboard.Infrastructure.Migrations
 {
     [DbContext(typeof(EdiDbContext))]
-    partial class EdiDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260524061430_AddEdiTransactionFileName")]
+    partial class AddEdiTransactionFileName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -344,9 +347,6 @@ namespace EDIDashboard.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("SubmissionDate")
-                        .HasColumnType("datetime2");
 
                     b.Property<int?>("TradingPartnerId")
                         .HasColumnType("int");

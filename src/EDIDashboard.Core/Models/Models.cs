@@ -18,6 +18,7 @@ public class EdiTransaction
     public TradingPartner TradingPartner { get; set; } = null!;
     public string TransactionType { get; set; } = string.Empty; // "837P","837I","837D","TA1","999"
     public string ControlNumber { get; set; } = string.Empty;
+    public string? FileName { get; set; }
     public string RawContent { get; set; } = string.Empty;
     public DateTime ReceivedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = "Received"; // Received, Accepted, Rejected
@@ -177,6 +178,7 @@ public class RecentTransaction
     public string TradingPartner { get; set; } = string.Empty;
     public string TransactionType { get; set; } = string.Empty;
     public string ControlNumber { get; set; } = string.Empty;
+    public string? FileName { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTime ReceivedAt { get; set; }
     public int ClaimCount { get; set; }

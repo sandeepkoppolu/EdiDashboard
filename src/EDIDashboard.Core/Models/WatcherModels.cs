@@ -52,6 +52,7 @@ public class FileProcessingLog
 {
     public int Id { get; set; }
     public string FileName { get; set; } = string.Empty;
+    public DateTime? SubmissionDate { get; set; }
     public string OriginalPath { get; set; } = string.Empty;
     public string FinalPath { get; set; } = string.Empty;
     public long FileSizeBytes { get; set; }

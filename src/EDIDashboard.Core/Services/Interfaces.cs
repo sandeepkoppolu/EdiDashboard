@@ -4,7 +4,7 @@ namespace EDIDashboard.Core.Services;
 
 public interface IEdiProcessingService
 {
-    Task<EdiUploadResult> ProcessEdiFileAsync(string rawContent, int tradingPartnerId);
+    Task<EdiUploadResult> ProcessEdiFileAsync(string rawContent, int tradingPartnerId, string? fileName = null);
 }
 
 public interface IMetricsService

@@ -18,7 +18,7 @@ public class EdiProcessingService : IEdiProcessingService
         _logger = logger;
     }
 
-    public async Task<EdiUploadResult> ProcessEdiFileAsync(string rawContent, int tradingPartnerId)
+    public async Task<EdiUploadResult> ProcessEdiFileAsync(string rawContent, int tradingPartnerId, string? fileName = null)
     {
         var result = new EdiUploadResult();
 
@@ -39,19 +39,19 @@ public class EdiProcessingService : IEdiProcessingService
                 case "837P":
                 case "837I":
                 case "837D":
-                    await Process837Async(rawContent, tradingPartnerId, result);
+                    await Process837Async(rawContent, tradingPartnerId, result, fileName);
                     break;
 
                 case "TA1":
-                    await ProcessTa1Async(rawContent, tradingPartnerId, result);
+                    await ProcessTa1Async(rawContent, tradingPartnerId, result, fileName);
                     break;
 
                 case "999":
-                    await Process999Async(rawContent, tradingPartnerId, result);
+                    await Process999Async(rawContent, tradingPartnerId, result, fileName);
                     break;
 
                 case "277CA":
-                    await Process277CaAsync(rawContent, tradingPartnerId, result);
+                    await Process277CaAsync(rawContent, tradingPartnerId, result, fileName);
                     break;
 
                 default:
@@ -75,7 +75,10 @@ public class EdiProcessingService : IEdiProcessingService
 
     private async Task<TradingPartner> ResolveOrCreateTradingPartnerAsync(string rawContent, int tradingPartnerId, string ediType)
     {
-        if (tradingPartnerId > 0)
+        var isAcknowledgment = ediType is "TA1" or "999" or "277CA";
+        var isClaimSubmission = ediType is "837P" or "837I" or "837D";
+
+        if (tradingPartnerId > 0 && !isAcknowledgment && !isClaimSubmission)
         {
             var explicitPartner = await _db.TradingPartners.FindAsync(tradingPartnerId);
             if (explicitPartner != null)
@@ -89,24 +92,76 @@ public class EdiProcessingService : IEdiProcessingService
         var isa08 = ExtractIsaElement(rawContent, 8); // receiver id
         var isa07 = ExtractIsaElement(rawContent, 7); // receiver qualifier
 
-        var isResponse = ediType is "TA1" or "999" or "277CA";
-        var primaryId = isResponse ? isa08 : isa06;
-        var primaryQualifier = isResponse ? isa07 : isa05;
-        var secondaryId = isResponse ? isa06 : isa08;
-        var secondaryQualifier = isResponse ? isa05 : isa07;
+        var primaryId = isAcknowledgment ? isa08 : isa06;
+        var primaryQualifier = isAcknowledgment ? isa07 : isa05;
+        var secondaryId = isAcknowledgment ? isa06 : isa08;
+        var secondaryQualifier = isAcknowledgment ? isa05 : isa07;
+        var primaryRole = isAcknowledgment ? "ISA08 receiver" : "ISA06 sender";
+        var canUseSecondary = !isClaimSubmission;
+
+        if (isClaimSubmission && tradingPartnerId > 0)
+        {
+            var explicitPartner = await _db.TradingPartners.FindAsync(tradingPartnerId);
+            if (explicitPartner != null &&
+                !string.IsNullOrWhiteSpace(primaryId) &&
+                !string.Equals(explicitPartner.InterchangeId, primaryId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring explicit TradingPartnerId {ExplicitPartnerId} ('{ExplicitInterchangeId}') for {EdiType}; using ISA06 sender '{Isa06}' for 837 resolution.",
+                    explicitPartner.Id,
+                    explicitPartner.InterchangeId,
+                    ediType,
+                    primaryId.Trim());
+            }
+        }
+
+        if (isAcknowledgment && tradingPartnerId > 0)
+        {
+            var explicitPartner = await _db.TradingPartners.FindAsync(tradingPartnerId);
+            if (explicitPartner != null &&
+                !string.IsNullOrWhiteSpace(primaryId) &&
+                !string.Equals(explicitPartner.InterchangeId, primaryId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring explicit TradingPartnerId {ExplicitPartnerId} ('{ExplicitInterchangeId}') for {EdiType}; using {PrimaryRole} '{PrimaryId}' for acknowledgment resolution.",
+                    explicitPartner.Id,
+                    explicitPartner.InterchangeId,
+                    ediType,
+                    primaryRole,
+                    primaryId.Trim());
+            }
+        }
 
         TradingPartner? existing = null;
         if (!string.IsNullOrWhiteSpace(primaryId))
             existing = await _db.TradingPartners.FirstOrDefaultAsync(p => p.InterchangeId == primaryId.Trim());
-        if (existing == null && !string.IsNullOrWhiteSpace(secondaryId))
-            existing = await _db.TradingPartners.FirstOrDefaultAsync(p => p.InterchangeId == secondaryId.Trim());
         if (existing != null)
             return existing;
 
-        var createId = !string.IsNullOrWhiteSpace(primaryId) ? primaryId.Trim() : secondaryId.Trim();
+        if (canUseSecondary && !string.IsNullOrWhiteSpace(secondaryId))
+        {
+            existing = await _db.TradingPartners.FirstOrDefaultAsync(p => p.InterchangeId == secondaryId.Trim());
+            if (existing != null)
+                return existing;
+        }
+
+        var createId = !string.IsNullOrWhiteSpace(primaryId)
+            ? primaryId.Trim()
+            : (canUseSecondary && !string.IsNullOrWhiteSpace(secondaryId) ? secondaryId.Trim() : string.Empty);
         var createQualifier = !string.IsNullOrWhiteSpace(primaryId)
             ? primaryQualifier
-            : secondaryQualifier;
+            : (canUseSecondary ? secondaryQualifier : null);
+
+        if (string.IsNullOrWhiteSpace(createId) && tradingPartnerId > 0)
+        {
+            var explicitPartner = await _db.TradingPartners.FindAsync(tradingPartnerId);
+            if (explicitPartner != null)
+                return explicitPartner;
+        }
+
+        if (string.IsNullOrWhiteSpace(createId) && isAcknowledgment)
+            throw new InvalidOperationException("Acknowledgment trading partner could not be resolved because ISA08/ISA06 are missing.");
+
         if (string.IsNullOrWhiteSpace(createId))
             throw new InvalidOperationException("Trading partner could not be resolved because ISA06 and ISA08 are both missing.");
 
@@ -139,10 +194,11 @@ public class EdiProcessingService : IEdiProcessingService
         return parts.Length > elementIndex ? parts[elementIndex].Trim() : string.Empty;
     }
 
-    private async Task Process837Async(string rawContent, int tradingPartnerId, EdiUploadResult result)
+    private async Task Process837Async(string rawContent, int tradingPartnerId, EdiUploadResult result, string? fileName)
     {
         var parser = new Edi837Parser();
         var (transaction, claims) = parser.Parse(rawContent, tradingPartnerId);
+        transaction.FileName = string.IsNullOrWhiteSpace(fileName) ? null : fileName.Trim();
 
         // Check for duplicate control number
         var exists = await _db.EdiTransactions
@@ -206,10 +262,11 @@ public class EdiProcessingService : IEdiProcessingService
         result.Message = $"Successfully processed {claims.Count} claim(s) from {transaction.TransactionType} transaction.";
     }
 
-    private async Task ProcessTa1Async(string rawContent, int tradingPartnerId, EdiUploadResult result)
+    private async Task ProcessTa1Async(string rawContent, int tradingPartnerId, EdiUploadResult result, string? fileName)
     {
         var parser = new Ta1Parser();
         var (transaction, ack) = parser.Parse(rawContent, tradingPartnerId);
+        transaction.FileName = string.IsNullOrWhiteSpace(fileName) ? null : fileName.Trim();
 
         _db.EdiTransactions.Add(transaction);
         await _db.SaveChangesAsync();
@@ -242,10 +299,31 @@ public class EdiProcessingService : IEdiProcessingService
         result.Message = $"TA1 processed. Interchange {ack.ControlNumber}: {ack.Description}";
     }
 
-    private async Task Process999Async(string rawContent, int tradingPartnerId, EdiUploadResult result)
+    private async Task Process999Async(string rawContent, int tradingPartnerId, EdiUploadResult result, string? fileName)
     {
         var parser = new Edi999Parser();
         var (transaction, acks) = parser.Parse(rawContent, tradingPartnerId);
+        transaction.FileName = string.IsNullOrWhiteSpace(fileName) ? null : fileName.Trim();
+
+        if (acks.Count == 0)
+        {
+            // Keep Acknowledgments page populated even when partner 999 files only provide group-level status.
+            var fallbackCode = transaction.Status switch
+            {
+                "Rejected" => "R",
+                "Accepted" => "A",
+                _ => ""
+            };
+
+            acks.Add(new AcknowledgmentRecord
+            {
+                AckType = "999",
+                ControlNumber = transaction.ControlNumber,
+                AcknowledgmentCode = fallbackCode,
+                Description = "999 processed using group summary (AK9). Transaction-set detail (IK5/AK5) not present.",
+                ReceivedAt = DateTime.UtcNow
+            });
+        }
 
         _db.EdiTransactions.Add(transaction);
         await _db.SaveChangesAsync();
@@ -294,10 +372,11 @@ public class EdiProcessingService : IEdiProcessingService
         result.Message = $"999 processed. {acks.Count} functional group(s) acknowledged. Status: {transaction.Status}";
     }
 
-    private async Task Process277CaAsync(string rawContent, int tradingPartnerId, EdiUploadResult result)
+    private async Task Process277CaAsync(string rawContent, int tradingPartnerId, EdiUploadResult result, string? fileName)
     {
         var parser = new Edi277CaParser();
         var (transaction, claimStatuses) = parser.Parse(rawContent, tradingPartnerId);
+        transaction.FileName = string.IsNullOrWhiteSpace(fileName) ? null : fileName.Trim();
 
         _db.EdiTransactions.Add(transaction);
         await _db.SaveChangesAsync();
@@ -363,21 +442,40 @@ public class MetricsService : IMetricsService
     {
         var fromDate = from ?? DateTime.UtcNow.AddDays(-30);
         var toDate = to ?? DateTime.UtcNow;
+        var fromSubmissionDate = fromDate.Date;
+        var toSubmissionDate = toDate.Date;
+        var toSubmissionDateExclusive = toSubmissionDate.AddDays(1);
+
+        var txWindowQuery = _db.EdiTransactions.AsQueryable();
+
+        if (tradingPartnerId.HasValue)
+            txWindowQuery = txWindowQuery.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
+
+        txWindowQuery = txWindowQuery.Where(t => _db.FileProcessingLogs.Any(l =>
+            (
+                (l.SubmissionDate.HasValue &&
+                 l.SubmissionDate.Value >= fromSubmissionDate &&
+                 l.SubmissionDate.Value <= toSubmissionDate) ||
+                (!l.SubmissionDate.HasValue &&
+                 l.PickedUpAt >= fromSubmissionDate &&
+                 l.PickedUpAt < toSubmissionDateExclusive)
+            ) &&
+            (!tradingPartnerId.HasValue || l.TradingPartnerId == tradingPartnerId.Value) &&
+            (
+                (!string.IsNullOrEmpty(l.FileName) && l.FileName == t.FileName) ||
+                (!string.IsNullOrEmpty(l.ControlNumber) && l.ControlNumber == t.ControlNumber &&
+                    (string.IsNullOrEmpty(l.DetectedType) || l.DetectedType == t.TransactionType))
+            )
+        ));
+
+        var txIdsInWindow = txWindowQuery.Select(t => t.Id);
 
         var claimsQuery = _db.Claims
             .Include(c => c.EdiTransaction)
-            .Where(c => c.CreatedAt >= fromDate && c.CreatedAt <= toDate);
-
-        if (tradingPartnerId.HasValue)
-            claimsQuery = claimsQuery.Where(c => c.EdiTransaction.TradingPartnerId == tradingPartnerId.Value);
-
-        var txQuery = _db.EdiTransactions
-            .Where(t => t.ReceivedAt >= fromDate && t.ReceivedAt <= toDate);
-        if (tradingPartnerId.HasValue)
-            txQuery = txQuery.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
+            .Where(c => txIdsInWindow.Contains(c.EdiTransactionId));
 
         var allClaims = await claimsQuery.ToListAsync();
-        var allTx = await txQuery.CountAsync();
+        var allTx = await txWindowQuery.CountAsync();
 
         // By trading partner
         var byPartner = await claimsQuery
@@ -394,15 +492,32 @@ public class MetricsService : IMetricsService
             })
             .ToListAsync();
 
-        // Daily volume (last 30 days)
-        var daily = allClaims
-            .GroupBy(c => c.CreatedAt.Date)
+        // Daily volume based on effective date from FileProcessingLogs:
+        // SubmissionDate when present, otherwise PickedUpAt date.
+        var logQuery = _db.FileProcessingLogs.AsQueryable();
+
+        if (tradingPartnerId.HasValue)
+            logQuery = logQuery.Where(l => l.TradingPartnerId == tradingPartnerId.Value);
+
+        var logRows = await logQuery
+            .Select(l => new { l.SubmissionDate, l.PickedUpAt, l.ClaimsProcessed, l.Status })
+            .ToListAsync();
+
+        var daily = logRows
+            .Select(l => new
+            {
+                EffectiveDate = (l.SubmissionDate ?? l.PickedUpAt.Date),
+                l.ClaimsProcessed,
+                l.Status
+            })
+            .Where(l => l.EffectiveDate >= fromDate.Date && l.EffectiveDate <= toDate.Date)
+            .GroupBy(l => l.EffectiveDate)
             .Select(g => new DailyVolume
             {
                 Date = g.Key,
-                Claims = g.Count(),
-                Accepted = g.Count(x => x.Status == "Accepted"),
-                Rejected = g.Count(x => x.Status == "Rejected")
+                Claims = g.Sum(x => x.ClaimsProcessed),
+                Accepted = g.Where(x => x.Status == "Success").Sum(x => x.ClaimsProcessed),
+                Rejected = g.Where(x => x.Status == "Failed").Sum(x => x.ClaimsProcessed)
             })
             .OrderBy(d => d.Date)
             .ToList();
@@ -419,9 +534,15 @@ public class MetricsService : IMetricsService
             .ToList();
 
         // Recent transactions
-        var recent = await _db.EdiTransactions
+        var recentQuery = _db.EdiTransactions
             .Include(t => t.TradingPartner)
             .Include(t => t.Claims)
+            .Where(t => txIdsInWindow.Contains(t.Id));
+
+        if (tradingPartnerId.HasValue)
+            recentQuery = recentQuery.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
+
+        var recent = await recentQuery
             .OrderByDescending(t => t.ReceivedAt)
             .Take(20)
             .Select(t => new RecentTransaction
@@ -430,6 +551,7 @@ public class MetricsService : IMetricsService
                 TradingPartner = t.TradingPartner.Name,
                 TransactionType = t.TransactionType,
                 ControlNumber = t.ControlNumber,
+                FileName = t.FileName,
                 Status = t.Status,
                 ReceivedAt = t.ReceivedAt,
                 ClaimCount = t.Claims.Count

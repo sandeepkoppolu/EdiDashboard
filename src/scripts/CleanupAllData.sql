@@ -7,6 +7,8 @@
   - This script deletes data in foreign-key-safe order.
   - It keeps __EFMigrationsHistory intact.
   - It reseeds identity columns back to 0 so next insert starts at 1.
+    - It clears FileProcessingLogs entries used by the watcher, uploads, and Daily Volume widget.
+    - It is safe against the current schema, including Claims277CA and FileProcessingLogs.SubmissionDate.
 */
 
 SET NOCOUNT ON;
@@ -18,24 +20,24 @@ BEGIN TRY
     PRINT 'Starting EDIDashboard data cleanup...';
 
     /* Child/dependent tables first */
-    DELETE FROM [ServiceLines];
-    DELETE FROM [Claims277CA];
-    DELETE FROM [Claims];
-    DELETE FROM [Acknowledgments];
-    DELETE FROM [FileProcessingLogs];
+    IF OBJECT_ID(N'[ServiceLines]', N'U') IS NOT NULL DELETE FROM [ServiceLines];
+    IF OBJECT_ID(N'[Claims277CA]', N'U') IS NOT NULL DELETE FROM [Claims277CA];
+    IF OBJECT_ID(N'[Claims]', N'U') IS NOT NULL DELETE FROM [Claims];
+    IF OBJECT_ID(N'[Acknowledgments]', N'U') IS NOT NULL DELETE FROM [Acknowledgments];
+    IF OBJECT_ID(N'[FileProcessingLogs]', N'U') IS NOT NULL DELETE FROM [FileProcessingLogs];
 
     /* Parent tables */
-    DELETE FROM [EdiTransactions];
-    DELETE FROM [TradingPartners];
+    IF OBJECT_ID(N'[EdiTransactions]', N'U') IS NOT NULL DELETE FROM [EdiTransactions];
+    IF OBJECT_ID(N'[TradingPartners]', N'U') IS NOT NULL DELETE FROM [TradingPartners];
 
     /* Reseed identity values */
-    DBCC CHECKIDENT ('ServiceLines', RESEED, 0);
-    DBCC CHECKIDENT ('Claims277CA', RESEED, 0);
-    DBCC CHECKIDENT ('Claims', RESEED, 0);
-    DBCC CHECKIDENT ('Acknowledgments', RESEED, 0);
-    DBCC CHECKIDENT ('FileProcessingLogs', RESEED, 0);
-    DBCC CHECKIDENT ('EdiTransactions', RESEED, 0);
-    DBCC CHECKIDENT ('TradingPartners', RESEED, 0);
+    IF OBJECT_ID(N'[ServiceLines]', N'U') IS NOT NULL DBCC CHECKIDENT ('ServiceLines', RESEED, 0);
+    IF OBJECT_ID(N'[Claims277CA]', N'U') IS NOT NULL DBCC CHECKIDENT ('Claims277CA', RESEED, 0);
+    IF OBJECT_ID(N'[Claims]', N'U') IS NOT NULL DBCC CHECKIDENT ('Claims', RESEED, 0);
+    IF OBJECT_ID(N'[Acknowledgments]', N'U') IS NOT NULL DBCC CHECKIDENT ('Acknowledgments', RESEED, 0);
+    IF OBJECT_ID(N'[FileProcessingLogs]', N'U') IS NOT NULL DBCC CHECKIDENT ('FileProcessingLogs', RESEED, 0);
+    IF OBJECT_ID(N'[EdiTransactions]', N'U') IS NOT NULL DBCC CHECKIDENT ('EdiTransactions', RESEED, 0);
+    IF OBJECT_ID(N'[TradingPartners]', N'U') IS NOT NULL DBCC CHECKIDENT ('TradingPartners', RESEED, 0);
 
     COMMIT TRANSACTION;
 

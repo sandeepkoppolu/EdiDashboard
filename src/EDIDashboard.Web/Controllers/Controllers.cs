@@ -38,8 +38,18 @@ public class MetricsController : ControllerBase
 public class EdiController : ControllerBase
 {
     private readonly IEdiProcessingService _ediService;
+    private readonly IFileProcessingLogRepository _logRepo;
+    private readonly EdiDbContext _db;
 
-    public EdiController(IEdiProcessingService ediService) => _ediService = ediService;
+    public EdiController(
+        IEdiProcessingService ediService,
+        IFileProcessingLogRepository logRepo,
+        EdiDbContext db)
+    {
+        _ediService = ediService;
+        _logRepo = logRepo;
+        _db = db;
+    }
 
     /// <summary>
     /// Upload raw EDI file(s). If tradingPartnerId is omitted/0, partner is auto-resolved from ISA06 and created when missing.
@@ -65,7 +75,8 @@ public class EdiController : ControllerBase
             using var singleReader = new StreamReader(uploadFiles[0].OpenReadStream());
             var singleContent = await singleReader.ReadToEndAsync();
 
-            var singleResult = await _ediService.ProcessEdiFileAsync(singleContent, tradingPartnerId);
+            var singleResult = await _ediService.ProcessEdiFileAsync(singleContent, tradingPartnerId, uploadFiles[0].FileName);
+            await CreateUploadLogAsync(uploadFiles[0], singleResult);
             return singleResult.Success ? Ok(singleResult) : BadRequest(singleResult);
         }
 
@@ -76,7 +87,8 @@ public class EdiController : ControllerBase
             using var reader = new StreamReader(uploadFile.OpenReadStream());
             var content = await reader.ReadToEndAsync();
 
-            var result = await _ediService.ProcessEdiFileAsync(content, tradingPartnerId);
+            var result = await _ediService.ProcessEdiFileAsync(content, tradingPartnerId, uploadFile.FileName);
+            await CreateUploadLogAsync(uploadFile, result);
             batchResults.Add((uploadFile.FileName, result));
         }
 
@@ -112,6 +124,63 @@ public class EdiController : ControllerBase
 
         var result = await _ediService.ProcessEdiFileAsync(request.Content, request.TradingPartnerId);
         return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    private async Task CreateUploadLogAsync(IFormFile uploadFile, EdiUploadResult result)
+    {
+        var now = DateTime.UtcNow;
+        var resolvedPartnerId = await ResolveTradingPartnerIdAsync(uploadFile.FileName, result);
+
+        await _logRepo.CreateAsync(new FileProcessingLog
+        {
+            FileName = uploadFile.FileName,
+            SubmissionDate = ParseSubmissionDate(uploadFile.FileName),
+            OriginalPath = uploadFile.FileName,
+            FinalPath = uploadFile.FileName,
+            FileSizeBytes = uploadFile.Length,
+            DetectedType = result.TransactionType,
+            TradingPartnerId = resolvedPartnerId,
+            Status = result.Success ? "Success" : "Failed",
+            ErrorMessage = result.Success ? null : result.Message,
+            ControlNumber = result.ControlNumber,
+            ClaimsProcessed = result.ClaimsProcessed,
+            PickedUpAt = now,
+            CompletedAt = now,
+            ProcessingDuration = TimeSpan.Zero,
+            Source = "Upload"
+        });
+    }
+
+    private async Task<int?> ResolveTradingPartnerIdAsync(string fileName, EdiUploadResult result)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(result.TransactionType))
+            return null;
+
+        var query = _db.EdiTransactions
+            .Where(t => t.FileName == fileName && t.TransactionType == result.TransactionType);
+
+        if (!string.IsNullOrWhiteSpace(result.ControlNumber))
+            query = query.Where(t => t.ControlNumber == result.ControlNumber);
+
+        return await query
+            .OrderByDescending(t => t.ReceivedAt)
+            .Select(t => (int?)t.TradingPartnerId)
+            .FirstOrDefaultAsync();
+    }
+
+    private static DateTime? ParseSubmissionDate(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length < 8)
+            return null;
+
+        return DateTime.TryParseExact(
+            fileName[..8],
+            "MMddyyyy",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed)
+            ? parsed.Date
+            : null;
     }
 }
 
@@ -263,7 +332,7 @@ public class TransactionsController : ControllerBase
             .Take(pageSize)
             .Select(t => new
             {
-                t.Id, t.TransactionType, t.ControlNumber, t.Status,
+                t.Id, t.TransactionType, t.ControlNumber, t.FileName, t.Status,
                 t.ReceivedAt, t.ErrorDescription,
                 TradingPartner = t.TradingPartner.Name,
                 ClaimCount = t.Claims.Count
@@ -308,6 +377,7 @@ public class AcknowledgmentsController : ControllerBase
             {
                 a.Id, a.AckType, a.ControlNumber, a.AcknowledgmentCode,
                 a.Description, a.ReceivedAt, a.ErrorCode,
+                FileName = a.EdiTransaction.FileName,
                 TradingPartner = a.EdiTransaction.TradingPartner.Name
             })
             .ToListAsync();

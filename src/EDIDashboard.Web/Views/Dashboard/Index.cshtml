@@ -246,12 +246,25 @@
   .panel-body { padding: 20px; }
 
   /* bar chart */
-  .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
-  .bar-group { flex: 1; display: flex; gap: 1px; align-items: flex-end; }
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    height: 140px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .bar-group {
+    flex: 0 0 36px;
+    display: flex;
+    gap: 4px;
+    align-items: flex-end;
+    justify-content: center;
+  }
   .bar {
-    flex: 1;
-    border-radius: 2px 2px 0 0;
-    min-height: 2px;
+    width: 9px;
+    border-radius: 3px 3px 0 0;
+    min-height: 3px;
     transition: opacity 0.2s;
     position: relative;
   }
@@ -260,10 +273,20 @@
   .bar-accepted { background: var(--accent); }
   .bar-rejected { background: var(--danger); }
   .chart-labels {
-    display: flex; gap: 3px; margin-top: 6px;
-    font-family: var(--mono); font-size: 9px; color: var(--muted); overflow: hidden;
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    overflow-x: auto;
   }
-  .chart-label { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
+  .chart-label {
+    flex: 0 0 36px;
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
 
   /* donut */
   .donut-wrap { display: flex; align-items: center; gap: 20px; }
@@ -540,12 +563,16 @@
     <!-- ══ DASHBOARD ══ -->
     <section id="section-dashboard">
       <div class="filter-bar">
-        <select class="filter-select" id="dash-range" onchange="loadDashboard()">
+        <select class="filter-select" id="dash-range" onchange="onDashboardRangeChange()">
           <option value="7">Last 7 days</option>
           <option value="30" selected>Last 30 days</option>
           <option value="90">Last 90 days</option>
           <option value="365">Last 12 months</option>
+          <option value="custom">Custom range</option>
         </select>
+        <input class="filter-input" type="date" id="dash-from" onchange="onCustomDateChange()" style="display:none" />
+        <input class="filter-input" type="date" id="dash-to" onchange="onCustomDateChange()" style="display:none" />
+        <button class="btn btn-secondary" id="dash-refresh" onclick="loadDashboard()" style="display:none">Refresh</button>
       </div>
 
       <div class="kpi-grid" id="kpi-grid">
@@ -633,9 +660,9 @@
       <div class="panel">
         <div class="panel-header"><span class="panel-title">Recent Transactions</span></div>
         <table>
-          <thead><tr><th>Type</th><th>Control #</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
+          <thead><tr><th>Type</th><th>Control #</th><th>File Name</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
           <tbody id="recent-tbody">
-            <tr><td colspan="6" class="empty-state"><p>Loading…</p></td></tr>
+            <tr><td colspan="7" class="empty-state"><p>Loading…</p></td></tr>
           </tbody>
         </table>
       </div>
@@ -658,8 +685,8 @@
       <div class="panel">
         <div class="panel-header"><span class="panel-title">All Transactions</span><span id="tx-count" style="font-size:12px;color:var(--muted)"></span></div>
         <table>
-          <thead><tr><th>ID</th><th>Type</th><th>Control #</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
-          <tbody id="tx-tbody"><tr><td colspan="7"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+          <thead><tr><th>ID</th><th>Type</th><th>Control #</th><th>File Name</th><th>Partner</th><th>Claims</th><th>Status</th><th>Received</th></tr></thead>
+          <tbody id="tx-tbody"><tr><td colspan="8"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
         </table>
         <div class="pagination" id="tx-pagination"></div>
       </div>
@@ -701,8 +728,8 @@
       <div class="panel">
         <div class="panel-header"><span class="panel-title">Acknowledgments</span></div>
         <table>
-          <thead><tr><th>Type</th><th>Control #</th><th>Partner</th><th>Code</th><th>Description</th><th>Received</th></tr></thead>
-          <tbody id="ack-tbody"><tr><td colspan="6"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
+          <thead><tr><th>Type</th><th>Control #</th><th>File Name</th><th>Partner</th><th>Code</th><th>Description</th><th>Received</th></tr></thead>
+          <tbody id="ack-tbody"><tr><td colspan="7"><div class="empty-state"><p>Loading…</p></div></td></tr></tbody>
         </table>
         <div class="pagination" id="ack-pagination"></div>
       </div>
@@ -804,6 +831,7 @@ let partners = [];
 let selectedPartnerId = null;
 let txPage = 1, claimPage = 1, ackPage = 1;
 const PAGE_SIZE = 25;
+let dashboardRequestId = 0;
 
 function setTheme(theme) {
   document.body.classList.remove('theme-light', 'theme-dark');
@@ -976,13 +1004,56 @@ async function deletePartner(id) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 async function loadDashboard() {
-  const days = parseInt(document.getElementById('dash-range').value);
-  const from = new Date(); from.setDate(from.getDate() - days);
-  const params = new URLSearchParams({ from: from.toISOString() });
+  const requestId = ++dashboardRequestId;
+  const rangeValue = document.getElementById('dash-range').value;
+  const params = new URLSearchParams();
+
+  let from;
+  let to;
+  if (rangeValue === 'custom') {
+    const fromInput = document.getElementById('dash-from').value;
+    const toInput = document.getElementById('dash-to').value;
+    if (fromInput && toInput && fromInput > toInput) {
+      toast('From date cannot be after To date', 'error');
+      return;
+    }
+
+    const fromIso = toIsoUtc(fromInput, false);
+    const toIso = toIsoUtc(toInput, true);
+    if (fromInput && !fromIso) {
+      toast('Invalid From date', 'error');
+      return;
+    }
+    if (toInput && !toIso) {
+      toast('Invalid To date', 'error');
+      return;
+    }
+
+    if (fromInput) {
+      from = fromInput;
+      params.set('from', fromIso);
+    }
+    if (toInput) {
+      to = toInput;
+      params.set('to', toIso);
+    }
+  } else {
+    const days = parseInt(rangeValue, 10);
+    from = new Date();
+    from.setDate(from.getDate() - days);
+    to = new Date();
+    params.set('from', from.toISOString());
+    params.set('to', to.toISOString());
+  }
+
   if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
+  params.set('_ts', Date.now().toString());
 
   const res = await fetch('/api/metrics?' + params);
   const d = await res.json();
+
+  // Ignore stale responses from older requests when user changes filters quickly.
+  if (requestId !== dashboardRequestId) return;
 
   document.getElementById('kpi-total').textContent = fmt(d.totalClaims);
   document.getElementById('kpi-total-sub').textContent = `${d.totalTransactions} transactions`;
@@ -1000,21 +1071,62 @@ async function loadDashboard() {
   renderRecentTable(d.recentTransactions);
 }
 
+function onDashboardRangeChange() {
+  const isCustom = document.getElementById('dash-range').value === 'custom';
+  const fromEl = document.getElementById('dash-from');
+  const toEl = document.getElementById('dash-to');
+  const refreshEl = document.getElementById('dash-refresh');
+
+  fromEl.style.display = isCustom ? '' : 'none';
+  toEl.style.display = isCustom ? '' : 'none';
+  refreshEl.style.display = isCustom ? '' : 'none';
+
+  if (isCustom && !fromEl.value && !toEl.value) {
+    const today = new Date();
+    const prior = new Date();
+    prior.setDate(today.getDate() - 30);
+    fromEl.value = prior.toISOString().slice(0, 10);
+    toEl.value = today.toISOString().slice(0, 10);
+  }
+
+  loadDashboard();
+}
+
+function onCustomDateChange() {
+  if (document.getElementById('dash-range').value !== 'custom') return;
+  loadDashboard();
+}
+
+function toIsoUtc(dateText, endOfDay) {
+  if (!dateText || !/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return null;
+  const suffix = endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z';
+  const dt = new Date(dateText + suffix);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+}
+
 function renderBarChart(volumes) {
   if (!volumes || !volumes.length) {
     document.getElementById('bar-chart').innerHTML = '<div class="empty-state" style="width:100%"><p>No volume data</p></div>';
+    document.getElementById('chart-labels').innerHTML = '';
     return;
   }
   const maxClaims = Math.max(...volumes.map(v => v.claims), 1);
   const barChart = document.getElementById('bar-chart');
   const labels = document.getElementById('chart-labels');
   const showEvery = Math.ceil(volumes.length / 10);
+  const chartHeightPx = 140;
+
+  const scaledHeightPx = (value) => {
+    if (!value) return 0;
+    // Keep non-zero values visibly bar-like instead of hairline slivers.
+    return Math.max(14, Math.round((value / maxClaims) * chartHeightPx));
+  };
 
   barChart.innerHTML = volumes.map(v => `
     <div class="bar-group" title="${v.date?.split('T')[0]}: ${v.claims} total, ${v.accepted} accepted, ${v.rejected} rejected">
-      <div class="bar bar-total" style="height:${(v.claims/maxClaims*100)}%"></div>
-      <div class="bar bar-accepted" style="height:${(v.accepted/maxClaims*100)}%"></div>
-      <div class="bar bar-rejected" style="height:${(v.rejected/maxClaims*100)}%"></div>
+      <div class="bar bar-total" style="height:${scaledHeightPx(v.claims)}px"></div>
+      <div class="bar bar-accepted" style="height:${scaledHeightPx(v.accepted)}px"></div>
+      <div class="bar bar-rejected" style="height:${scaledHeightPx(v.rejected)}px"></div>
     </div>
   `).join('');
 
@@ -1084,13 +1196,14 @@ function renderPartnerTable(partners) {
 function renderRecentTable(txns) {
   const tbody = document.getElementById('recent-tbody');
   if (!txns || !txns.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No transactions yet. Upload an EDI file to get started.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No transactions yet. Upload an EDI file to get started.</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = txns.map(t => `
     <tr>
       <td>${typeBadge(t.transactionType)}</td>
       <td style="font-family:var(--mono);font-size:12px">${t.controlNumber || '—'}</td>
+      <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.fileName || ''}">${t.fileName || '—'}</td>
       <td>${t.tradingPartner}</td>
       <td style="font-family:var(--mono)">${t.claimCount}</td>
       <td>${statusBadge(t.status)}</td>
@@ -1113,7 +1226,7 @@ async function loadTransactions() {
 
   const tbody = document.getElementById('tx-tbody');
   if (!data.items.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No transactions found.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>No transactions found.</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = data.items.map(t => `
@@ -1121,6 +1234,7 @@ async function loadTransactions() {
       <td style="font-family:var(--mono);color:var(--muted);font-size:11px">${t.id}</td>
       <td>${typeBadge(t.transactionType)}</td>
       <td style="font-family:var(--mono);font-size:12px">${t.controlNumber || '—'}</td>
+      <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.fileName || ''}">${t.fileName || '—'}</td>
       <td>${t.tradingPartner}</td>
       <td style="font-family:var(--mono)">${t.claimCount}</td>
       <td>${statusBadge(t.status)}</td>
@@ -1179,13 +1293,14 @@ async function loadAcks() {
 
   const tbody = document.getElementById('ack-tbody');
   if (!data.items.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No acknowledgments found.</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>No acknowledgments found.</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = data.items.map(a => `
     <tr>
       <td>${typeBadge(a.ackType)}</td>
       <td style="font-family:var(--mono);font-size:12px">${a.controlNumber || '—'}</td>
+      <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.fileName || ''}">${a.fileName || '—'}</td>
       <td>${a.tradingPartner}</td>
       <td><span class="badge ${a.acknowledgmentCode === 'A' ? 'badge-accepted' : a.acknowledgmentCode === 'R' ? 'badge-rejected' : 'badge-received'}">${a.acknowledgmentCode || '—'}</span></td>
       <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.description || ''}">${a.description || '—'}</td>

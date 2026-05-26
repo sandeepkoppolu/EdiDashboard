@@ -199,6 +199,7 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
         var log = new FileProcessingLog
         {
             FileName = fileName,
+            SubmissionDate = ParseSubmissionDate(fileName),
             OriginalPath = filePath,
             FileSizeBytes = fileInfo.Length,
             PickedUpAt = DateTime.UtcNow,
@@ -241,7 +242,7 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var processingService = scope.ServiceProvider.GetRequiredService<IEdiProcessingService>();
 
-            var result = await processingService.ProcessEdiFileAsync(content, partnerId);
+            var result = await processingService.ProcessEdiFileAsync(content, partnerId, fileName);
 
             log.ControlNumber = result.ControlNumber;
             log.ClaimsProcessed = result.ClaimsProcessed;
@@ -299,22 +300,62 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
 
     private async Task<int> ResolvePartnerIdAsync(string content, string detectedType, int? hintedPartnerId)
     {
+        var isAcknowledgment = detectedType is "TA1" or "999" or "277CA";
+        var isClaimSubmission = detectedType is "837P" or "837I" or "837D";
+
         // 1. Use the sub-folder hint if already resolved
-        if (hintedPartnerId.HasValue && hintedPartnerId.Value > 0)
+        if (!isAcknowledgment && !isClaimSubmission && hintedPartnerId.HasValue && hintedPartnerId.Value > 0)
             return hintedPartnerId.Value;
 
         // 2. Try to resolve by ISA06/ISA08 with EDI-type awareness.
-        //    For TA1/999/277CA, sender/receiver are reversed, so prefer ISA08.
+        //    For inbound acknowledgments, ISA06 is still the external trading partner,
+        //    while ISA08 is our receiver ID from the original outbound interchange.
         var isa06 = ExtractIsa06(content); // sender id
         var isa05 = ExtractIsa05(content); // sender qualifier
         var isa08 = ExtractIsa08(content); // receiver id
         var isa07 = ExtractIsa07(content); // receiver qualifier
-        var isResponse = detectedType is "TA1" or "999" or "277CA";
 
-        var primaryId = isResponse ? isa08 : isa06;
-        var primaryQualifier = isResponse ? isa07 : isa05;
-        var secondaryId = isResponse ? isa06 : isa08;
-        var secondaryQualifier = isResponse ? isa05 : isa07;
+        var primaryId = isAcknowledgment ? isa08 : isa06;
+        var primaryQualifier = isAcknowledgment ? isa07 : isa05;
+        var secondaryId = isAcknowledgment ? isa06 : isa08;
+        var secondaryQualifier = isAcknowledgment ? isa05 : isa07;
+        var primaryRole = isAcknowledgment ? "ISA08 receiver" : "ISA06 sender";
+        var canUseSecondary = !isClaimSubmission;
+
+        if (isClaimSubmission && hintedPartnerId.HasValue && hintedPartnerId.Value > 0 && !string.IsNullOrWhiteSpace(primaryId))
+        {
+            using var hintScope = _scopeFactory.CreateScope();
+            var partnerSvc = hintScope.ServiceProvider.GetRequiredService<ITradingPartnerService>();
+            var hinted = await partnerSvc.GetByIdAsync(hintedPartnerId.Value);
+            if (hinted != null &&
+                !string.Equals(hinted.InterchangeId, primaryId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring folder hint TradingPartnerId {HintedPartnerId} ('{HintedInterchangeId}') for {DetectedType}; using ISA06 sender '{Isa06}' for 837 resolution.",
+                    hinted.Id,
+                    hinted.InterchangeId,
+                    detectedType,
+                    primaryId.Trim());
+            }
+        }
+
+        if (isAcknowledgment && hintedPartnerId.HasValue && hintedPartnerId.Value > 0 && !string.IsNullOrWhiteSpace(primaryId))
+        {
+            using var hintScope = _scopeFactory.CreateScope();
+            var partnerSvc = hintScope.ServiceProvider.GetRequiredService<ITradingPartnerService>();
+            var hinted = await partnerSvc.GetByIdAsync(hintedPartnerId.Value);
+            if (hinted != null &&
+                !string.Equals(hinted.InterchangeId, primaryId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Ignoring folder hint TradingPartnerId {HintedPartnerId} ('{HintedInterchangeId}') for {DetectedType}; using {PrimaryRole} '{PrimaryId}' for acknowledgment resolution.",
+                    hinted.Id,
+                    hinted.InterchangeId,
+                    detectedType,
+                    primaryRole,
+                    primaryId.Trim());
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(primaryId))
         {
@@ -322,7 +363,7 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
             if (existingPrimary.HasValue) return existingPrimary.Value;
         }
 
-        if (!string.IsNullOrWhiteSpace(secondaryId))
+        if (canUseSecondary && !string.IsNullOrWhiteSpace(secondaryId))
         {
             var existingSecondary = ResolvePartnerByInterchangeId(secondaryId);
             if (existingSecondary.HasValue) return existingSecondary.Value;
@@ -330,8 +371,11 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
 
         if (!string.IsNullOrWhiteSpace(primaryId))
             return await ResolveOrCreatePartnerIdAsync(primaryId, primaryQualifier);
-        if (!string.IsNullOrWhiteSpace(secondaryId))
+        if (canUseSecondary && !string.IsNullOrWhiteSpace(secondaryId))
             return await ResolveOrCreatePartnerIdAsync(secondaryId, secondaryQualifier);
+
+        if (isAcknowledgment)
+            throw new InvalidOperationException("Acknowledgment trading partner could not be resolved because ISA08/ISA06 are missing.");
 
         // 3. Fall back to default
         if (_opts.DefaultTradingPartnerId > 0)
@@ -387,6 +431,22 @@ public class EdiFolderWatcherBackgroundService : BackgroundService
         var partnerSvc = scope.ServiceProvider.GetRequiredService<ITradingPartnerService>();
         var partner = partnerSvc.GetByInterchangeIdAsync(interchangeId.Trim()).GetAwaiter().GetResult();
         return partner?.Id;
+    }
+
+    private static DateTime? ParseSubmissionDate(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length < 8)
+            return null;
+
+        var prefix = fileName[..8];
+        return DateTime.TryParseExact(
+            prefix,
+            "MMddyyyy",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed)
+            ? parsed.Date
+            : null;
     }
 
     private static string ExtractIsa06(string content)

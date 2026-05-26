@@ -33,6 +33,7 @@ public class EdiDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.TransactionType).IsRequired().HasMaxLength(10);
             e.Property(x => x.ControlNumber).HasMaxLength(9);
+            e.Property(x => x.FileName).HasMaxLength(260);
             e.Property(x => x.Status).HasMaxLength(20);
             e.Property(x => x.RawContent).IsRequired();
             e.HasOne(x => x.TradingPartner)
@@ -126,6 +127,7 @@ public class EdiDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.FileName).IsRequired().HasMaxLength(260);
+            e.Property(x => x.SubmissionDate);
             e.Property(x => x.OriginalPath).HasMaxLength(500);
             e.Property(x => x.FinalPath).HasMaxLength(500);
             e.Property(x => x.DetectedType).HasMaxLength(20);
