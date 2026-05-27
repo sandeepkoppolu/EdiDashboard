@@ -1,3 +1,4 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -564,8 +565,9 @@
     <section id="section-dashboard">
       <div class="filter-bar">
         <select class="filter-select" id="dash-range" onchange="onDashboardRangeChange()">
+          <option value="all" selected>All time</option>
           <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
+          <option value="30">Last 30 days</option>
           <option value="90">Last 90 days</option>
           <option value="365">Last 12 months</option>
           <option value="custom">Custom range</option>
@@ -832,6 +834,12 @@ let selectedPartnerId = null;
 let txPage = 1, claimPage = 1, ackPage = 1;
 const PAGE_SIZE = 25;
 let dashboardRequestId = 0;
+const API_BASE_URL = '@(Config["Api:BaseUrl"] ?? "")'.replace(/\/+$/, '');
+
+function apiUrl(path) {
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  return API_BASE_URL ? API_BASE_URL + normalizedPath : normalizedPath;
+}
 
 function setTheme(theme) {
   document.body.classList.remove('theme-light', 'theme-dark');
@@ -898,7 +906,7 @@ function globalFilter() {
 
 // ─── Partners ─────────────────────────────────────────────────────────────────
 async function loadPartners() {
-  const partnerUrls = ['/api/tradingpartners', '/api/TradingPartners'];
+  const partnerUrls = [apiUrl('/api/tradingpartners'), apiUrl('/api/TradingPartners')];
   let loaded = null;
 
   for (const url of partnerUrls) {
@@ -981,7 +989,7 @@ async function savePartner() {
     interchangeQualifier: document.getElementById('partner-qualifier').value,
     isActive: document.getElementById('partner-active').value === 'true'
   };
-  const url = id ? `/api/tradingpartners/${id}` : '/api/tradingpartners';
+  const url = id ? apiUrl(`/api/tradingpartners/${id}`) : apiUrl('/api/tradingpartners');
   const method = id ? 'PUT' : 'POST';
   const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (res.ok) {
@@ -996,7 +1004,7 @@ async function savePartner() {
 
 async function deletePartner(id) {
   if (!confirm('Delete this trading partner?')) return;
-  await fetch(`/api/tradingpartners/${id}`, { method: 'DELETE' });
+  await fetch(apiUrl(`/api/tradingpartners/${id}`), { method: 'DELETE' });
   await loadPartners();
   renderPartnersTable();
   toast('Partner deleted', 'success');
@@ -1037,7 +1045,7 @@ async function loadDashboard() {
       to = toInput;
       params.set('to', toIso);
     }
-  } else {
+  } else if (rangeValue !== 'all') {
     const days = parseInt(rangeValue, 10);
     from = new Date();
     from.setDate(from.getDate() - days);
@@ -1049,7 +1057,7 @@ async function loadDashboard() {
   if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
   params.set('_ts', Date.now().toString());
 
-  const res = await fetch('/api/metrics?' + params);
+  const res = await fetch(apiUrl('/api/metrics?' + params));
   const d = await res.json();
 
   // Ignore stale responses from older requests when user changes filters quickly.
@@ -1219,7 +1227,7 @@ async function loadTransactions() {
   if (type) params.set('type', type);
   if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
 
-  const res = await fetch('/api/transactions?' + params);
+  const res = await fetch(apiUrl('/api/transactions?' + params));
   const data = await res.json();
 
   document.getElementById('tx-count').textContent = `${data.total} total`;
@@ -1256,7 +1264,7 @@ async function loadClaims() {
   if (to) params.set('to', new Date(to).toISOString());
   if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
 
-  const res = await fetch('/api/claims?' + params);
+  const res = await fetch(apiUrl('/api/claims?' + params));
   const data = await res.json();
   document.getElementById('claim-count').textContent = `${data.total} total`;
 
@@ -1288,7 +1296,7 @@ async function loadAcks() {
   if (ackType) params.set('ackType', ackType);
   if (selectedPartnerId) params.set('tradingPartnerId', selectedPartnerId);
 
-  const res = await fetch('/api/acknowledgments?' + params);
+  const res = await fetch(apiUrl('/api/acknowledgments?' + params));
   const data = await res.json();
 
   const tbody = document.getElementById('ack-tbody');
@@ -1364,7 +1372,7 @@ async function uploadFile() {
   selectedFiles.forEach(file => form.append('files', file));
 
   try {
-    const res = await fetch('/api/edi/upload', { method: 'POST', body: form });
+    const res = await fetch(apiUrl('/api/edi/upload'), { method: 'POST', body: form });
     const data = await res.json();
     resultEl.style.display = 'block';
     if (res.ok) {

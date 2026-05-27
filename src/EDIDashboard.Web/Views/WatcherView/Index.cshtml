@@ -1,3 +1,4 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -294,12 +295,18 @@
 <script>
 let allLogs = [], filteredLogs = [], page = 1, pageSize = 20;
 let partners = [];
+const API_BASE_URL = '@(Config["Api:BaseUrl"] ?? "")'.replace(/\/+$/, '');
+
+function apiUrl(path) {
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  return API_BASE_URL ? API_BASE_URL + normalizedPath : normalizedPath;
+}
 
 async function loadStatus() {
   try {
     const [statusRes, logsRes] = await Promise.all([
-      fetch('/api/watcher/status'),
-      fetch('/api/watcher/logs?pageSize=200'),
+      fetch(apiUrl('/api/watcher/status')),
+      fetch(apiUrl('/api/watcher/logs?pageSize=200')),
     ]);
     const s = await statusRes.json();
     const l = await logsRes.json();
@@ -441,7 +448,7 @@ async function scanNow() {
   btn.disabled = true;
   spinner.style.display = 'inline-block';
   try {
-    const res = await fetch('/api/watcher/scan', { method: 'POST' });
+    const res = await fetch(apiUrl('/api/watcher/scan'), { method: 'POST' });
     const data = await res.json();
     if (data.filesProcessed === 0) {
       toast('Inbox is empty — no files to process.', 'ok');

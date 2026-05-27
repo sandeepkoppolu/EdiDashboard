@@ -95,6 +95,29 @@ public class Edi837Parser
                                 currentClaim.ProviderId = currentProviderId;
                             }
                             break;
+                        case "71": // Attending Provider (common in 837I)
+                        case "72": // Operating Provider (common in 837I)
+                        case "73": // Other Provider (common in 837I)
+                            currentProviderName = $"{firstName} {lastName}".Trim();
+                            currentProviderId = idCode;
+                            if (currentClaim != null)
+                            {
+                                currentClaim.ProviderName = currentProviderName;
+                                currentClaim.ProviderId = currentProviderId;
+                            }
+                            break;
+                        case "77": // Service Location Provider (fallback if no better provider captured)
+                            if (string.IsNullOrEmpty(currentProviderName))
+                            {
+                                currentProviderName = $"{firstName} {lastName}".Trim();
+                                currentProviderId = idCode;
+                            }
+                            if (currentClaim != null && string.IsNullOrEmpty(currentClaim.ProviderName))
+                            {
+                                currentClaim.ProviderName = currentProviderName;
+                                currentClaim.ProviderId = currentProviderId;
+                            }
+                            break;
                         case "85": // Billing Provider
                             if (string.IsNullOrEmpty(currentProviderName))
                             {
@@ -186,6 +209,21 @@ public class Edi837Parser
                         {
                             ProcedureCode = el.Length > 2 ? el[2].Split(_componentSeparator).ElementAtOrDefault(1) ?? "" : "",
                             ChargedAmount = el.Length > 3 ? ParseDecimal(el[3]) : 0,
+                            Units = el.Length > 5 ? ParseInt(el[5]) : 1,
+                            ServiceDate = currentClaim.ServiceDateFrom
+                        };
+                        currentClaim.ServiceLines.Add(currentLine);
+                    }
+                    break;
+
+                case "SV3": // Dental service line
+                    if (currentClaim != null)
+                    {
+                        var procParts = el.Length > 1 ? el[1].Split(_componentSeparator) : Array.Empty<string>();
+                        currentLine = new ServiceLine
+                        {
+                            ProcedureCode = procParts.Length > 1 ? procParts[1] : (el.Length > 1 ? el[1] : ""),
+                            ChargedAmount = el.Length > 2 ? ParseDecimal(el[2]) : 0,
                             Units = el.Length > 5 ? ParseInt(el[5]) : 1,
                             ServiceDate = currentClaim.ServiceDateFrom
                         };

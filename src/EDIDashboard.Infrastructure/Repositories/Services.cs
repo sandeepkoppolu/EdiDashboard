@@ -440,136 +440,114 @@ public class MetricsService : IMetricsService
     public async Task<DashboardMetrics> GetDashboardMetricsAsync(
         int? tradingPartnerId = null, DateTime? from = null, DateTime? to = null)
     {
-        var fromDate = from ?? DateTime.UtcNow.AddDays(-30);
-        var toDate = to ?? DateTime.UtcNow;
-        var fromSubmissionDate = fromDate.Date;
-        var toSubmissionDate = toDate.Date;
-        var toSubmissionDateExclusive = toSubmissionDate.AddDays(1);
+        var fromDate = from ?? DateTime.MinValue;
+        var toDate = to ?? DateTime.MaxValue;
 
-        var txWindowQuery = _db.EdiTransactions.AsQueryable();
+        var transactionsInRange = _db.EdiTransactions
+            .Select(t => new
+            {
+                t.Id,
+                t.TradingPartnerId,
+                TradingPartnerName = t.TradingPartner.Name,
+                t.TransactionType,
+                t.ControlNumber,
+                t.FileName,
+                t.Status,
+                t.ReceivedAt,
+                EffectiveDate = (_db.FileProcessingLogs
+                    .Where(f => t.FileName != null && f.FileName == t.FileName && f.SubmissionDate.HasValue)
+                    .Select(f => f.SubmissionDate)
+                    .FirstOrDefault() ?? t.ReceivedAt)
+            })
+            .Where(t => t.EffectiveDate >= fromDate && t.EffectiveDate <= toDate);
 
         if (tradingPartnerId.HasValue)
-            txWindowQuery = txWindowQuery.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
+            transactionsInRange = transactionsInRange.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
 
-        txWindowQuery = txWindowQuery.Where(t => _db.FileProcessingLogs.Any(l =>
-            (
-                (l.SubmissionDate.HasValue &&
-                 l.SubmissionDate.Value >= fromSubmissionDate &&
-                 l.SubmissionDate.Value <= toSubmissionDate) ||
-                (!l.SubmissionDate.HasValue &&
-                 l.PickedUpAt >= fromSubmissionDate &&
-                 l.PickedUpAt < toSubmissionDateExclusive)
-            ) &&
-            (!tradingPartnerId.HasValue || l.TradingPartnerId == tradingPartnerId.Value) &&
-            (
-                (!string.IsNullOrEmpty(l.FileName) && l.FileName == t.FileName) ||
-                (!string.IsNullOrEmpty(l.ControlNumber) && l.ControlNumber == t.ControlNumber &&
-                    (string.IsNullOrEmpty(l.DetectedType) || l.DetectedType == t.TransactionType))
-            )
-        ));
+        var transactionIds = transactionsInRange.Select(t => t.Id);
 
-        var txIdsInWindow = txWindowQuery.Select(t => t.Id);
+        var claimsQuery = _db.Claims.Where(c => transactionIds.Contains(c.EdiTransactionId));
 
-        var claimsQuery = _db.Claims
-            .Include(c => c.EdiTransaction)
-            .Where(c => txIdsInWindow.Contains(c.EdiTransactionId));
+        var totalClaims = await claimsQuery.CountAsync();
+        var acceptedClaims = await claimsQuery.CountAsync(c => c.Status == "Accepted");
+        var rejectedClaims = await claimsQuery.CountAsync(c => c.Status == "Rejected");
+        var pendingClaims = await claimsQuery.CountAsync(c => c.Status == "Received" || c.Status == "Pending");
+        var totalBilledAmount = await claimsQuery.Select(c => (decimal?)c.TotalAmount).SumAsync() ?? 0m;
+        var totalTransactions = await transactionsInRange.CountAsync();
 
-        var allClaims = await claimsQuery.ToListAsync();
-        var allTx = await txWindowQuery.CountAsync();
-
-        // By trading partner
-        var byPartner = await claimsQuery
-            .GroupBy(c => new { c.EdiTransaction.TradingPartnerId, c.EdiTransaction.TradingPartner.Name })
-            .Select(g => new TradingPartnerMetric
-            {
-                TradingPartnerId = g.Key.TradingPartnerId,
-                TradingPartnerName = g.Key.Name,
-                TotalClaims = g.Count(),
-                Accepted = g.Count(x => x.Status == "Accepted"),
-                Rejected = g.Count(x => x.Status == "Rejected"),
-                Pending = g.Count(x => x.Status == "Received"),
-                TotalAmount = g.Sum(x => x.TotalAmount)
-            })
-            .ToListAsync();
-
-        // Daily volume based on effective date from FileProcessingLogs:
-        // SubmissionDate when present, otherwise PickedUpAt date.
-        var logQuery = _db.FileProcessingLogs.AsQueryable();
-
-        if (tradingPartnerId.HasValue)
-            logQuery = logQuery.Where(l => l.TradingPartnerId == tradingPartnerId.Value);
-
-        var logRows = await logQuery
-            .Select(l => new { l.SubmissionDate, l.PickedUpAt, l.ClaimsProcessed, l.Status })
-            .ToListAsync();
-
-        var daily = logRows
-            .Select(l => new
-            {
-                EffectiveDate = (l.SubmissionDate ?? l.PickedUpAt.Date),
-                l.ClaimsProcessed,
-                l.Status
-            })
-            .Where(l => l.EffectiveDate >= fromDate.Date && l.EffectiveDate <= toDate.Date)
-            .GroupBy(l => l.EffectiveDate)
-            .Select(g => new DailyVolume
+        var dailyVolumes = await (
+            from c in _db.Claims
+            join t in transactionsInRange on c.EdiTransactionId equals t.Id
+            group c by t.EffectiveDate.Date
+            into g
+            orderby g.Key
+            select new DailyVolume
             {
                 Date = g.Key,
-                Claims = g.Sum(x => x.ClaimsProcessed),
-                Accepted = g.Where(x => x.Status == "Success").Sum(x => x.ClaimsProcessed),
-                Rejected = g.Where(x => x.Status == "Failed").Sum(x => x.ClaimsProcessed)
+                Claims = g.Count(),
+                Accepted = g.Count(c => c.Status == "Accepted"),
+                Rejected = g.Count(c => c.Status == "Rejected")
             })
-            .OrderBy(d => d.Date)
-            .ToList();
+            .ToListAsync();
 
-        // By claim type
-        var byType = allClaims
+        var byClaimType = await claimsQuery
             .GroupBy(c => c.ClaimType)
             .Select(g => new ClaimTypeMetric
             {
-                ClaimType = g.Key,
+                ClaimType = string.IsNullOrWhiteSpace(g.Key) ? "Unknown" : g.Key,
                 Count = g.Count(),
                 TotalAmount = g.Sum(x => x.TotalAmount)
             })
-            .ToList();
+            .OrderByDescending(x => x.Count)
+            .ToListAsync();
 
-        // Recent transactions
-        var recentQuery = _db.EdiTransactions
-            .Include(t => t.TradingPartner)
-            .Include(t => t.Claims)
-            .Where(t => txIdsInWindow.Contains(t.Id));
+        var byTradingPartner = await (
+            from c in _db.Claims
+            join t in transactionsInRange on c.EdiTransactionId equals t.Id
+            group c by new { t.TradingPartnerId, t.TradingPartnerName }
+            into g
+            orderby g.Count() descending
+            select new TradingPartnerMetric
+            {
+                TradingPartnerId = g.Key.TradingPartnerId,
+                TradingPartnerName = g.Key.TradingPartnerName,
+                TotalClaims = g.Count(),
+                Accepted = g.Count(c => c.Status == "Accepted"),
+                Rejected = g.Count(c => c.Status == "Rejected"),
+                Pending = g.Count(c => c.Status == "Received" || c.Status == "Pending"),
+                TotalAmount = g.Sum(c => c.TotalAmount)
+            })
+            .ToListAsync();
 
-        if (tradingPartnerId.HasValue)
-            recentQuery = recentQuery.Where(t => t.TradingPartnerId == tradingPartnerId.Value);
-
-        var recent = await recentQuery
-            .OrderByDescending(t => t.ReceivedAt)
-            .Take(20)
+        var recentTransactions = await transactionsInRange
+            .OrderByDescending(t => t.EffectiveDate)
+            .ThenByDescending(t => t.ReceivedAt)
+            .Take(10)
             .Select(t => new RecentTransaction
             {
                 Id = t.Id,
-                TradingPartner = t.TradingPartner.Name,
+                TradingPartner = t.TradingPartnerName,
                 TransactionType = t.TransactionType,
                 ControlNumber = t.ControlNumber,
                 FileName = t.FileName,
                 Status = t.Status,
                 ReceivedAt = t.ReceivedAt,
-                ClaimCount = t.Claims.Count
+                ClaimCount = _db.Claims.Count(c => c.EdiTransactionId == t.Id)
             })
             .ToListAsync();
 
         return new DashboardMetrics
         {
-            TotalClaims = allClaims.Count,
-            AcceptedClaims = allClaims.Count(c => c.Status == "Accepted"),
-            RejectedClaims = allClaims.Count(c => c.Status == "Rejected"),
-            PendingClaims = allClaims.Count(c => c.Status == "Received"),
-            TotalBilledAmount = allClaims.Sum(c => c.TotalAmount),
-            TotalTransactions = allTx,
-            ByTradingPartner = byPartner,
-            DailyVolumes = daily,
-            ByClaimType = byType,
-            RecentTransactions = recent
+            TotalClaims = totalClaims,
+            AcceptedClaims = acceptedClaims,
+            RejectedClaims = rejectedClaims,
+            PendingClaims = pendingClaims,
+            TotalBilledAmount = totalBilledAmount,
+            TotalTransactions = totalTransactions,
+            DailyVolumes = dailyVolumes,
+            ByClaimType = byClaimType,
+            ByTradingPartner = byTradingPartner,
+            RecentTransactions = recentTransactions
         };
     }
 }

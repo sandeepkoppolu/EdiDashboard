@@ -207,3 +207,52 @@ Potential next improvements:
 - Exportable operational reports
 - Role-based access control and authentication
 - Additional X12 transaction support beyond current scope
+
+## Separate Web and API deployment
+The solution is now split into two deployable hosts:
+- EDIDashboard.Web: MVC/Razor UI only
+- EDIDashboard.Api: REST API, DB access, Swagger, and optional watcher background service
+
+### Local run with fixed ports
+Launch profiles are configured as:
+- Web: http://localhost:5000 (and https://localhost:7000)
+- API: http://localhost:5001 (and https://localhost:7001)
+
+Run API:
+- dotnet run --project EDIDashboard.Api/EDIDashboard.Api.csproj
+
+Run Web:
+- dotnet run --project EDIDashboard.Web/EDIDashboard.Web.csproj
+
+### Environment config mapping
+Web project:
+- appsettings.Development.json sets Api.BaseUrl to https://localhost:5001
+- appsettings.Production.json should set Api.BaseUrl to your deployed API URL
+
+API project:
+- appsettings.Development.json sets CORS origins for localhost web URLs
+- appsettings.Production.json should set CORS to your deployed web URL(s)
+- EdiWatcher.Enabled controls whether the background watcher runs in the API host
+
+### Publish and deploy separately
+Publish API:
+- dotnet publish EDIDashboard.Api/EDIDashboard.Api.csproj -c Release -o out/api
+
+Publish Web:
+- dotnet publish EDIDashboard.Web/EDIDashboard.Web.csproj -c Release -o out/web
+
+Deploy `out/api` and `out/web` to separate sites/apps (IIS, App Service, or containers).
+
+### IIS example topology
+- dashboard.yourdomain.com -> EDIDashboard.Web
+- api.yourdomain.com -> EDIDashboard.Api
+
+For IIS or App Service production, make sure these are set correctly:
+1. Web: Api.BaseUrl points to https://api.yourdomain.com
+2. API: Cors.AllowedOrigins includes https://dashboard.yourdomain.com
+3. ConnectionStrings in API point to production database
+4. EdiWatcher.Enabled is true in only one host that should process files
+
+### Database migrations
+Run migrations using the API startup project:
+- dotnet ef database update --project EDIDashboard.Infrastructure/EDIDashboard.Infrastructure.csproj --startup-project EDIDashboard.Api/EDIDashboard.Api.csproj --context EdiDbContext
